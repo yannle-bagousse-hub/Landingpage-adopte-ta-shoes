@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adopte ta shoes — On n'achète pas une paire, on l'adopte</title>
+  <meta name="description" content="Adopte ta shoes : la curation de sneakers premium. Trouve ta paire, adopte-la. Authenticité garantie, matières nobles, livraison le lendemain.">
+
+  <!--
+    ASSETS À REMPLACER (placeholders) :
+    - Sneakers : dessinées en SVG par js/sneaker-renderer.js tant que
+      product.image est null dans js/data.js. Mets tes PNG détourés et
+      renseigne le champ image de chaque produit.
+    - Vidéo statement : video/hero-sneaker.mp4 (clip Pexels générique).
+    - Sons : /audio/*.mp3 (voir js/audio.js), non fournis.
+    - Logo : texte "Adopte." — remplace par ton SVG si besoin.
+  -->
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Libs (globals) : GSAP + ScrollTrigger + Lenis -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.14/dist/lenis.min.js"></script>
+
+  <!-- Three.js (modules ES via CDN) — carousel hero 3D uniquement.
+       Sert à js/sneaker3d.js. Le reste du site ne dépend pas de Three. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <!-- App (modules ES) -->
+  <script type="module" src="js/main.js"></script>
+</head>
+
+<body>
+  <!-- ===================== LOADER ===================== -->
+  <div id="loader" class="loader-container">
+    <div class="loader-content">
+      <h1 class="loader-logo">ADOPTE<span class="dot">.</span></h1>
+      <div class="loader-progress-bar"><div class="loader-progress-fill"></div></div>
+      <div class="loader-counter"><span id="loader-percent">0</span>%</div>
+    </div>
+  </div>
+
+  <!-- ===================== NAVBAR ===================== -->
+  <header class="main-header">
+    <!-- barre de progression liquide -->
+    <div class="scroll-progress"><div class="scroll-progress-fill"></div></div>
+
+    <div class="header-container">
+      <a href="#hero" class="logo">
+        <span class="logo-text">Adopte<span class="logo-accent">.</span></span>
+      </a>
+
+      <div class="header-actions">
+        <button id="soundToggle" class="hud-btn sound-btn is-muted" aria-label="Activer / couper le son">
+          <span class="sound-bars"><i></i><i></i><i></i></span>
+        </button>
+
+        <button class="menu-toggle" id="menuToggle" aria-label="Ouvrir le menu"
+                aria-expanded="false" aria-controls="mobileMenu">
+          <span class="menu-dots"><i></i><i></i><i></i><i></i></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================== MENU PLEIN ÉCRAN ===================== -->
+  <div class="mobile-menu" id="mobileMenu">
+    <nav class="mobile-menu-inner">
+      <ul class="mobile-links">
+        <li><a href="#hero" class="mobile-link"><span>01</span> Collection</a></li>
+        <li><a href="#benefits" class="mobile-link"><span>02</span> Pourquoi nous</a></li>
+        <li><a href="#faq" class="mobile-link"><span>03</span> FAQ</a></li>
+        <li><a href="#newsletter" class="mobile-link"><span>04</span> Newsletter</a></li>
+      </ul>
+      <div class="menu-footer">
+        <a href="mailto:bonjour@adopte-ta-shoes.com" class="menu-contact">bonjour@adopte-ta-shoes.com</a>
+        <div class="menu-social">
+          <a href="#" aria-label="Instagram">Instagram</a>
+          <a href="#" aria-label="TikTok">TikTok</a>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <!-- ===================== HUD décoratif ===================== -->
+  <div class="hud hud-bottom-left"><span class="hud-coords">SCROLL 000 / 100</span></div>
+  <div class="hud hud-bottom-right"><span>ADOPTE™ · 2026 · FR</span></div>
+
+  <main>
+    <!-- ===================== HERO — LA COLLECTION ===================== -->
+    <section id="hero" class="hero-section">
+      <!-- fond dégradé conique qui tourne, teinté par le coloris actif -->
+      <div class="hero-gradient"></div>
+
+      <div class="hero-head">
+        <p class="hero-eyebrow">La collection · 8 paires à adopter</p>
+        <h1 class="hero-title">
+          <span class="hero-active-name">Atlas</span>
+          <span class="hero-active-colorway">Blanc Cassé / Crème</span>
+        </h1>
+      </div>
+
+      <!-- Scène du carousel 3D -->
+      <div class="carousel-scene">
+        <button class="carousel-arrow prev" aria-label="Paire précédente">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+
+        <div class="carousel-viewport">
+          <!-- carousel.js insère ici les items (sneaker-renderer) -->
+          <div class="carousel-track" id="carouselTrack"></div>
+        </div>
+
+        <button class="carousel-arrow next" aria-label="Paire suivante">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+
+      <!-- Meta paire active + pagination -->
+      <div class="hero-foot">
+        <div class="hero-meta">
+          <span class="hero-active-badge">Meilleure vente</span>
+          <span class="hero-active-price">139 €</span>
+        </div>
+        <div class="carousel-dots" id="carouselDots"></div>
+        <p class="scroll-hint">Scroller pour découvrir <span class="scroll-hint-line"></span></p>
+      </div>
+    </section>
+
+    <!-- ===================== PROFIL ===================== -->
+    <section id="profile" class="profile-section">
+      <h2 class="profile-bigtitle" aria-hidden="true">Atlas</h2>
+      <div class="profile-content">
+        <p class="profile-kicker">Le profil</p>
+        <p class="profile-desc">L'essentiel, mais vraiment bien fait.</p>
+        <a href="#collection" class="btn btn-brand">Voir la fiche</a>
+      </div>
+    </section>
+
+    <!-- ===================== POURQUOI ADOPTER (bénéfices) ===================== -->
+    <section id="benefits" class="benefits">
+      <!-- nav latérale à icônes -->
+      <nav class="benefits-nav" aria-label="Nos engagements">
+        <button class="benefit-nav-item is-active" data-target="benefit-1" aria-label="Authenticité garantie">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 4v6c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+        </button>
+        <button class="benefit-nav-item" data-target="benefit-2" aria-label="Matières nobles">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6 6 .5-4.5 4 1.5 6L12 15l-6 3.5 1.5-6L3 8.5 9 8z"></path></svg>
+        </button>
+        <button class="benefit-nav-item" data-target="benefit-3" aria-label="Livraison le lendemain">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="14" height="11" rx="1"></rect><path d="M15 9h4l3 3v5h-7z"></path><circle cx="6" cy="18" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg>
+        </button>
+        <button class="benefit-nav-item" data-target="benefit-4" aria-label="Retours faciles">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg>
+        </button>
+      </nav>
+
+      <div class="benefits-panels">
+        <article id="benefit-1" class="benefit-panel">
+          <p class="benefit-strike"><s>Contrefaçons dans la nature</s></p>
+          <h2 class="benefit-title" data-reveal="chars">Authenticité garantie</h2>
+          <p class="benefit-text" data-reveal="lines">Chaque paire passe entre les mains de nos contrôleurs et vient de partenaires officiels. Zéro contrefaçon, promesse d'Adopte : tu reçois exactement ce que tu adoptes.</p>
+          <span class="benefit-index">01 / 04</span>
+        </article>
+
+        <article id="benefit-2" class="benefit-panel">
+          <p class="benefit-strike"><s>Synthétique cheap</s></p>
+          <h2 class="benefit-title" data-reveal="chars">Matières nobles</h2>
+          <p class="benefit-text" data-reveal="lines">Cuir pleine fleur, mesh technique respirant, semelles pensées pour durer. On choisit des matières qui vieillissent bien, parce qu'une bonne paire, ça s'adopte pour longtemps.</p>
+          <span class="benefit-index">02 / 04</span>
+        </article>
+
+        <article id="benefit-3" class="benefit-panel">
+          <p class="benefit-strike"><s>Livraison en 5 jours</s></p>
+          <h2 class="benefit-title" data-reveal="chars">Livraison le lendemain</h2>
+          <p class="benefit-text" data-reveal="lines">Commande aujourd'hui, chausse demain. Logistique rapide, suivi en temps réel : ta nouvelle paire est déjà pressée de te rencontrer.</p>
+          <span class="benefit-index">03 / 04</span>
+        </article>
+
+        <article id="benefit-4" class="benefit-panel">
+          <p class="benefit-strike"><s>Retours compliqués</s></p>
+          <h2 class="benefit-title" data-reveal="chars">Retour &amp; échange sous 30 jours</h2>
+          <p class="benefit-text" data-reveal="lines">Essaie-la à la maison, sans risque. Si le courant ne passe pas, tu la renvoies ou tu l'échanges sous 30 jours, simplement. Adopter, ça doit rester un plaisir.</p>
+          <span class="benefit-index">04 / 04</span>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===================== STATEMENT ===================== -->
+    <section class="statement-section">
+      <!-- PLACEHOLDER vidéo : clip générique. À remplacer par une vidéo par
+           modèle si souhaité (unboxing / porté / gros plan matière). -->
+      <video class="statement-video" autoplay muted loop playsinline>
+        <source src="video/hero-sneaker.mp4" type="video/mp4">
+      </video>
+      <div class="statement-overlay"></div>
+      <h2 class="statement-title">Pas juste une paire.<br>Une adoption.</h2>
+    </section>
+
+    <!-- ===================== TOUTE LA COLLECTION (scroll horizontal) ===================== -->
+    <section id="collection" class="collection-section">
+      <div class="collection-head">
+        <p class="section-kicker" data-reveal="fade">Toute la collection</p>
+        <h2 class="section-title" data-reveal="chars">8 paires. Une seule à toi.</h2>
+      </div>
+      <!-- rempli par main.js (renderSneaker) -->
+      <div class="collection-scroller" id="collectionGrid"></div>
+    </section>
+
+    <!-- ===================== FAQ ===================== -->
+    <section id="faq" class="faq-section">
+      <div class="faq-head">
+        <p class="section-kicker" data-reveal="fade">Questions fréquentes</p>
+        <h2 class="section-title" data-reveal="chars">On te dit tout.</h2>
+      </div>
+
+      <div class="faq-list">
+        <div class="faq-item">
+          <button class="faq-question" aria-expanded="false">Comment savoir si une paire est authentique chez Adopte ?<span class="faq-plus"></span></button>
+          <div class="faq-answer"><p>Chaque paire est authentifiée par notre équipe et provient de partenaires officiels. Tu reçois un certificat d'authenticité avec ta commande — et notre garantie zéro contrefaçon.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question" aria-expanded="false">Quels sont les délais de livraison ?<span class="faq-plus"></span></button>
+          <div class="faq-answer"><p>Commande passée avant 14h = livraison le lendemain en France métropolitaine. Tu suis ta paire en temps réel jusqu'à ta porte.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question" aria-expanded="false">Puis-je retourner une paire si la taille ne va pas ?<span class="faq-plus"></span></button>
+          <div class="faq-answer"><p>Oui, tu as 30 jours pour la renvoyer ou l'échanger, gratuitement. Essaie-la à la maison, sans risque.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question" aria-expanded="false">Comment choisir ma pointure ?<span class="faq-plus"></span></button>
+          <div class="faq-answer"><p>Chaque fiche produit propose un guide des tailles détaillé et nos conseils modèle par modèle. En cas de doute, écris-nous : on te conseille la bonne pointure.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question" aria-expanded="false">Proposez-vous des éditions limitées ?<span class="faq-plus"></span></button>
+          <div class="faq-answer"><p>Oui ! Certaines paires sont en série limitée (repère le badge « Édition limitée »). Inscris-toi à la newsletter pour être alerté·e des drops et restocks.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question" aria-expanded="false">Comment entretenir mes sneakers ?<span class="faq-plus"></span></button>
+          <div class="faq-answer"><p>On glisse dans chaque colis nos conseils d'entretien selon la matière (cuir, suède, mesh). Bien traitée, une paire adoptée te le rend au centuple.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question" aria-expanded="false">Livrez-vous à l'international ?<span class="faq-plus"></span></button>
+          <div class="faq-answer"><p>Oui, on livre dans toute l'Europe, et au-delà sur demande. Les délais et frais s'affichent au moment du paiement selon ta destination.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question" aria-expanded="false">Comment vous contacter en cas de problème ?<span class="faq-plus"></span></button>
+          <div class="faq-answer"><p>Écris-nous à bonjour@adopte-ta-shoes.com ou via nos DM Instagram / TikTok. On répond vite et avec le sourire.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== NEWSLETTER ===================== -->
+    <section id="newsletter" class="newsletter-section">
+      <div class="newsletter-card">
+        <p class="section-kicker" data-reveal="fade">Ne rate aucun drop</p>
+        <h2 class="newsletter-title" data-reveal="chars">Rejoins la team Adopte</h2>
+        <p class="newsletter-text" data-reveal="lines">Nouveaux modèles, restocks, éditions limitées : les meilleures paires partent vite. Sois prévenu·e en premier.</p>
+
+        <form id="newsletterForm" class="newsletter-form" novalidate>
+          <div class="form-row">
+            <input type="email" name="email" placeholder="ton@email.com" aria-label="Ton email" required>
+            <button type="submit" class="btn btn-brand">
+              <span class="btn-label">Je m'inscris</span>
+              <span class="btn-spinner" aria-hidden="true"></span>
+            </button>
+          </div>
+          <label class="form-consent">
+            <input type="checkbox" name="consent">
+            <span>J'accepte de recevoir les actualités d'Adopte ta shoes. Je peux me désinscrire à tout moment.</span>
+          </label>
+          <p class="form-status" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="site-footer">
+    <div class="footer-top">
+      <span class="footer-logo">Adopte<span class="logo-accent">.</span></span>
+      <div class="footer-social">
+        <a href="#">Instagram</a>
+        <a href="#">TikTok</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <nav class="footer-legal">
+        <a href="#">Mentions légales</a>
+        <a href="#">CGV</a>
+        <a href="#">Politique de confidentialité</a>
+      </nav>
+      <p class="footer-copy">© 2026 ADOPTE TA SHOES</p>
+    </div>
+  </footer>
+</body>
+</html>
