@@ -5,10 +5,14 @@
    0. Reset + variables (dont couleurs de marque dynamiques)
    1. Utilitaires (boutons, split-text)
    2. Loader
+   (la page d'intro — chaussures géantes, une fois par session — vit dans
+   site-intro.css + js/site-intro.js, entièrement séparés de ce fichier)
    3. Navbar / progress / son / menu 4-points
    4. Menu plein écran
    5. HUD décoratif
    6. Hero + carousel 3D
+   6bis. Ambiances hero (décor urbain par carte)
+   6quater. Storytelling (chaussure géante scroll-driven)
    7. Profil
    8. Bénéfices (nav latérale + panneaux)
    9. Statement
@@ -23,21 +27,63 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
+  /* --ink-rgb / --bg-rgb : mêmes couleurs que --ink / --bg, exprimées en
+     triplet RGB "nu" pour composer des rgba() translucides qui suivent
+     AUTOMATIQUEMENT le thème actif (cf. [data-theme="light"] plus bas) —
+     évite de dupliquer une valeur alpha par thème sur chaque déclaration. */
+  --ink-rgb: 245, 242, 236;
+  --bg-rgb: 11, 11, 12;
+
   --bg: #0b0b0c;
   --bg-soft: #141416;
   --ink: #f5f2ec;         /* texte principal (blanc cassé) */
-  --ink-dim: rgba(245, 242, 236, 0.58);
-  --line: rgba(245, 242, 236, 0.14);
+  --ink-dim: rgba(var(--ink-rgb), 0.58);
+  --line: rgba(var(--ink-rgb), 0.14);
 
   /* Couleurs de marque : pilotées en JS selon le coloris actif du carousel.
-     Elles transitionnent en douceur (0.6s) sur les éléments qui les utilisent. */
+     Elles transitionnent en douceur (0.6s) sur les éléments qui les utilisent.
+     INDÉPENDANTES du thème clair/sombre (identité du coloris de la paire). */
   --brand-primary: #ece5d6;
   --brand-secondary: #cabfa6;
   --brand-on: #141210;
 
+  /* Fond du footer : statique (n'est PAS piloté par le carousel, contrairement
+     à --brand-*), volontairement plus chaud/coloré que --bg pour distinguer
+     le footer du reste du site. Valeurs par thème (dark ci-dessous, light
+     dans [data-theme="light"]) — toujours assez contrasté pour --ink. */
+  --footer-bg: #2a160e;
+  --footer-bg-soft: #190d08;
+
   --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'Inter', sans-serif;
+  /* Typo "street"/sneaker culture — UNIQUEMENT pour les textes du carousel
+     héro (nom de modèle, labels, badge, prix, panneau de zoom), cf. sections
+     6 et 6ter. Anton n'a qu'une seule graisse (400, déjà très épaisse par
+     design) : ne JAMAIS lui appliquer font-weight 600/700 (bold synthétique
+     du navigateur, rendu flou/dégradé) — toujours 400 avec cette police. */
+  --font-street: 'Anton', sans-serif;
   --ease: cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* ------------------------- THÈME CLAIR / SOMBRE ------------------------- *
+   Basculé en JS via l'attribut data-theme sur <html> (cf. script inline du
+   <head> pour la résolution avant premier paint + js/main.js pour le bouton/
+   la persistance localStorage). "dark" = valeurs par défaut de :root
+   ci-dessus (aucune redéclaration nécessaire) ; "light" ne redéfinit QUE les
+   variables sémantiques ci-dessous — tout le reste du site les consomme déjà
+   via var(...), donc bascule automatiquement sans autre changement. */
+[data-theme="light"] {
+  --ink-rgb: 23, 19, 15;
+  --bg-rgb: 244, 239, 230;
+
+  --bg: #f4efe6;
+  --bg-soft: #ffffff;
+  --ink: #17130f;
+  --ink-dim: rgba(var(--ink-rgb), 0.6);
+  --line: rgba(var(--ink-rgb), 0.12);
+
+  --footer-bg: #f5e6d3;
+  --footer-bg-soft: #e8cba3;
 }
 
 html {
@@ -47,8 +93,20 @@ html {
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.35s ease, color 0.35s ease;
 }
 /* pas de scroll-behavior smooth natif : Lenis s'en charge */
+
+/* Transition douce et générique du changement de thème : ne s'applique QUE
+   là où aucune règle plus spécifique n'a déjà déclaré sa propre `transition`
+   (une classe l'emporte toujours sur l'universel, cf. .hud-btn, .carousel-
+   arrow, etc. plus bas, qui gardent leurs transitions dédiées transform/
+   etc. + leur propre background-color/border-color). Couvre donc surtout le
+   texte courant (paragraphes, titres, liens) qui n'avait sinon aucune
+   transition de couleur. */
+*, *::before, *::after {
+  transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, fill 0.35s ease;
+}
 
 body { overflow-x: hidden; }
 body.menu-open { overflow: hidden; }
@@ -129,7 +187,7 @@ button { font-family: inherit; cursor: pointer; }
 .loader-logo .dot { color: var(--brand-secondary); }
 .loader-progress-bar {
   height: 2px;
-  background: rgba(245, 242, 236, 0.12);
+  background: rgba(var(--ink-rgb), 0.12);
   border-radius: 999px;
   overflow: hidden;
   margin-bottom: 0.7rem;
@@ -140,6 +198,11 @@ button { font-family: inherit; cursor: pointer; }
   letter-spacing: 0.1em;
   color: var(--ink-dim);
 }
+
+/* La page d'intro (chaussures géantes, une fois par session) vit désormais
+   entièrement dans son propre fichier (site-intro.css) + son propre module
+   (js/site-intro.js) — composant à part entière, aucune règle ici ne lui est
+   dédiée (il construit et style son propre DOM lui-même). */
 
 /* ------------------------- 3. NAVBAR ------------------------- */
 .main-header {
@@ -152,7 +215,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .main-header.scrolled {
   padding: 0.9rem 2rem;
-  background: rgba(11, 11, 12, 0.72);
+  background: rgba(var(--bg-rgb), 0.72);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -198,7 +261,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: center;
   transition: background-color 0.25s ease, border-color 0.25s ease;
 }
-.hud-btn:hover { background: rgba(245, 242, 236, 0.08); }
+.hud-btn:hover { background: rgba(var(--ink-rgb), 0.08); }
 
 /* toggle son (barres animées) */
 .sound-bars { display: flex; align-items: flex-end; gap: 3px; height: 16px; }
@@ -221,7 +284,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: center;
   transition: background-color 0.25s ease;
 }
-.menu-toggle:hover { background: rgba(245, 242, 236, 0.08); }
+.menu-toggle:hover { background: rgba(var(--ink-rgb), 0.08); }
 .menu-dots {
   position: relative;
   display: grid;
@@ -238,12 +301,31 @@ button { font-family: inherit; cursor: pointer; }
 .menu-toggle.is-open .menu-dots i:nth-child(3) { transform: translate(4.5px, -4.5px); }
 .menu-toggle.is-open .menu-dots i:nth-child(4) { transform: translate(-4.5px, -4.5px); }
 
+/* toggle thème clair/sombre : deux icônes SVG superposées (soleil/lune),
+   l'une des deux visible selon data-theme (cf. js/main.js pour le clic/
+   la persistance) — rotation + fade croisés, dans le même esprit que les
+   autres micro-interactions du header (son, menu). */
+.theme-toggle { position: relative; }
+.theme-toggle .theme-icon {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 20px; height: 20px;
+  transform: translate(-50%, -50%) rotate(-90deg) scale(0.5);
+  opacity: 0;
+  transition: opacity 0.35s ease, transform 0.45s var(--ease);
+}
+[data-theme="dark"] .theme-toggle .theme-icon-sun,
+[data-theme="light"] .theme-toggle .theme-icon-moon {
+  opacity: 1;
+  transform: translate(-50%, -50%) rotate(0deg) scale(1);
+}
+
 /* ------------------------- 4. MENU PLEIN ÉCRAN ------------------------- */
 .mobile-menu {
   position: fixed;
   inset: 0;
   z-index: 900;
-  background: rgba(11, 11, 12, 0.98);
+  background: rgba(var(--bg-rgb), 0.98);
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
   clip-path: inset(0 0 100% 0);
@@ -346,6 +428,8 @@ button { font-family: inherit; cursor: pointer; }
 
 .hero-head { position: relative; z-index: 3; text-align: center; }
 .hero-eyebrow {
+  font-family: var(--font-street);
+  font-weight: 400;
   font-size: 0.78rem;
   letter-spacing: 0.24em;
   text-transform: uppercase;
@@ -355,9 +439,10 @@ button { font-family: inherit; cursor: pointer; }
 .hero-title { font-family: var(--font-display); line-height: 0.94; }
 .hero-active-name {
   display: block;
-  font-weight: 700;
+  font-family: var(--font-street);
+  font-weight: 400; /* Anton n'a qu'une graisse ; ne pas forcer 600/700 */
   font-size: clamp(2.6rem, 9vw, 7rem);
-  letter-spacing: -0.03em;
+  letter-spacing: 0; /* Anton est déjà condensée : le tracking négatif de Space Grotesk ferait se toucher les lettres */
 }
 .hero-active-colorway {
   display: block;
@@ -385,7 +470,7 @@ button { font-family: inherit; cursor: pointer; }
   position: relative;
   width: min(1000px, 92vw);
   height: 100%;
-  min-height: 40vh;
+  min-height: 50vh;
   perspective: 1600px;
 }
 .carousel-track {
@@ -439,7 +524,7 @@ button { font-family: inherit; cursor: pointer; }
   width: 52px; height: 52px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(255,255,255,0.04);
+  background: rgba(var(--ink-rgb), 0.04);
   color: var(--ink);
   display: flex; align-items: center; justify-content: center;
   transition: background-color 0.25s ease, transform 0.25s var(--ease);
@@ -458,8 +543,9 @@ button { font-family: inherit; cursor: pointer; }
 }
 .hero-meta { display: flex; align-items: center; gap: 1rem; }
 .hero-active-badge {
+  font-family: var(--font-street);
+  font-weight: 400;
   font-size: 0.7rem;
-  font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--brand-on);
@@ -469,8 +555,8 @@ button { font-family: inherit; cursor: pointer; }
   transition: background-color 0.6s ease, color 0.6s ease;
 }
 .hero-active-price {
-  font-family: var(--font-display);
-  font-weight: 600;
+  font-family: var(--font-street);
+  font-weight: 400;
   font-size: 1.2rem;
 }
 .carousel-dots { display: flex; gap: 0.5rem; }
@@ -478,7 +564,7 @@ button { font-family: inherit; cursor: pointer; }
   width: 8px; height: 8px;
   border-radius: 999px;
   border: none;
-  background: rgba(245, 242, 236, 0.25);
+  background: rgba(var(--ink-rgb), 0.25);
   transition: transform 0.4s var(--ease), background-color 0.4s ease, width 0.4s var(--ease);
 }
 .carousel-dot.is-active { width: 26px; background: var(--brand-primary); }
@@ -498,10 +584,392 @@ button { font-family: inherit; cursor: pointer; }
 }
 @keyframes hintPulse { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
 
+/* ------------------------- 6bis. AMBIANCES HERO ------------------------- *
+   Une "carte" du carousel = un décor urbain distinct derrière la paire.
+   Toutes les couches sont empilées (inset), une seule visible à la fois
+   (.is-active) : le changement de carte crossfade proprement en CSS pur,
+   sans dépendre du rendu Three.js (pas de conflit avec les paires voisines
+   visibles simultanément dans le manège 3D).
+   Purement décoratif : pas d'image externe, uniquement des dégradés CSS. */
+.hero-ambiance {
+  position: absolute;
+  inset: -20%;
+  z-index: 1;
+  overflow: hidden;
+}
+.hero-ambiance::after {
+  /* vignette commune : garde le texte (haut/bas) lisible quelle que soit l'ambiance */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, transparent 32%, rgba(var(--bg-rgb), 0.6) 100%);
+  pointer-events: none;
+}
+.ambiance-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+.ambiance-layer.is-active { opacity: 1; }
+
+.ambiance-ruelle {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 45, 149, 0.35), transparent 40%),
+    radial-gradient(circle at 76% 62%, rgba(56, 217, 217, 0.3), transparent 45%),
+    radial-gradient(circle at 50% 88%, rgba(255, 200, 40, 0.22), transparent 40%),
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 26px),
+    linear-gradient(180deg, #1a1418, #0b0b0c 70%);
+}
+.ambiance-skyline {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(64, 200, 255, 0.28), transparent 45%),
+    radial-gradient(circle at 78% 35%, rgba(255, 72, 180, 0.2), transparent 40%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 46px),
+    linear-gradient(180deg, #060b18 0%, #0b0b0c 65%);
+}
+.ambiance-metro {
+  background:
+    radial-gradient(circle at 62% 72%, rgba(255, 190, 110, 0.18), transparent 45%),
+    repeating-linear-gradient(90deg, rgba(120, 200, 200, 0.07) 0 58px, transparent 58px 60px),
+    repeating-linear-gradient(0deg, rgba(120, 200, 200, 0.1) 0 38px, rgba(255, 255, 255, 0.02) 38px 40px),
+    linear-gradient(180deg, #101418, #0b0b0c 75%);
+}
+.ambiance-rooftop {
+  background:
+    radial-gradient(circle at 50% 58%, rgba(255, 170, 90, 0.32), transparent 55%),
+    linear-gradient(180deg, #2b1740 0%, #6a2f4c 35%, #c1592f 62%, #17110f 100%);
+}
+.ambiance-briques {
+  background:
+    radial-gradient(ellipse at 28% 18%, rgba(255, 220, 160, 0.28), transparent 55%),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.28) 0 2px, transparent 2px 34px),
+    repeating-linear-gradient(90deg, #5a2e22 0 78px, #4a2419 78px 80px),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.55));
+}
+.ambiance-parking {
+  background:
+    radial-gradient(circle at 25% 75%, rgba(180, 60, 255, 0.3), transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(60, 120, 255, 0.22), transparent 40%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 90px),
+    linear-gradient(180deg, #0d0f14, #0b0b0c 70%);
+}
+.ambiance-warehouse {
+  background:
+    radial-gradient(circle at 70% 65%, rgba(255, 150, 60, 0.28), transparent 50%),
+    linear-gradient(115deg, transparent 40%, rgba(255, 175, 80, 0.16) 48%, transparent 56%),
+    linear-gradient(180deg, #17130f, #0b0b0c 70%);
+}
+.ambiance-terrain {
+  background:
+    radial-gradient(circle at 65% 25%, rgba(255, 140, 50, 0.25), transparent 45%),
+    radial-gradient(circle at 50% 100%, rgba(255, 255, 255, 0.08), transparent 50%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 140px),
+    linear-gradient(180deg, #10160f, #0b0b0c 70%);
+}
+
+/* Variantes CLAIRES des mêmes ambiances : mêmes touches de couleur (accents
+   radiaux) que la version sombre pour garder l'identité de chaque décor,
+   mais base + motifs éclaircis pour rester cohérent en [data-theme="light"]
+   (rien ne doit rester "bloqué" sur un fond nuit quel que soit le thème). */
+[data-theme="light"] .ambiance-ruelle {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 45, 149, 0.22), transparent 40%),
+    radial-gradient(circle at 76% 62%, rgba(56, 217, 217, 0.18), transparent 45%),
+    radial-gradient(circle at 50% 88%, rgba(255, 200, 40, 0.16), transparent 40%),
+    repeating-linear-gradient(115deg, rgba(23, 19, 15, 0.035) 0 2px, transparent 2px 26px),
+    linear-gradient(180deg, #f4efe6, #ece4d6 70%);
+}
+[data-theme="light"] .ambiance-skyline {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(64, 200, 255, 0.22), transparent 45%),
+    radial-gradient(circle at 78% 35%, rgba(255, 72, 180, 0.16), transparent 40%),
+    repeating-linear-gradient(90deg, rgba(23, 19, 15, 0.05) 0 2px, transparent 2px 46px),
+    linear-gradient(180deg, #eef1f6 0%, #e4e8f0 65%);
+}
+[data-theme="light"] .ambiance-metro {
+  background:
+    radial-gradient(circle at 62% 72%, rgba(255, 150, 60, 0.16), transparent 45%),
+    repeating-linear-gradient(90deg, rgba(60, 110, 110, 0.08) 0 58px, transparent 58px 60px),
+    repeating-linear-gradient(0deg, rgba(60, 110, 110, 0.1) 0 38px, rgba(23, 19, 15, 0.03) 38px 40px),
+    linear-gradient(180deg, #eef2f2, #e6ecec 75%);
+}
+[data-theme="light"] .ambiance-rooftop {
+  background:
+    radial-gradient(circle at 50% 58%, rgba(255, 150, 70, 0.28), transparent 55%),
+    linear-gradient(180deg, #e8d9f5 0%, #f0c9d8 35%, #ffdcc2 62%, #f4efe6 100%);
+}
+[data-theme="light"] .ambiance-briques {
+  background:
+    radial-gradient(ellipse at 28% 18%, rgba(255, 220, 160, 0.32), transparent 55%),
+    repeating-linear-gradient(0deg, rgba(23, 19, 15, 0.1) 0 2px, transparent 2px 34px),
+    repeating-linear-gradient(90deg, #d9a688 0 78px, #c9906e 78px 80px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.4));
+}
+[data-theme="light"] .ambiance-parking {
+  background:
+    radial-gradient(circle at 25% 75%, rgba(180, 60, 255, 0.18), transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(60, 120, 255, 0.16), transparent 40%),
+    repeating-linear-gradient(0deg, rgba(23, 19, 15, 0.04) 0 1px, transparent 1px 90px),
+    linear-gradient(180deg, #ecebf0, #e2e1ea 70%);
+}
+[data-theme="light"] .ambiance-warehouse {
+  background:
+    radial-gradient(circle at 70% 65%, rgba(255, 150, 60, 0.24), transparent 50%),
+    linear-gradient(115deg, transparent 40%, rgba(255, 175, 80, 0.2) 48%, transparent 56%),
+    linear-gradient(180deg, #f5ece0, #ece0cf 70%);
+}
+[data-theme="light"] .ambiance-terrain {
+  background:
+    radial-gradient(circle at 65% 25%, rgba(255, 140, 50, 0.2), transparent 45%),
+    radial-gradient(circle at 50% 100%, rgba(23, 19, 15, 0.06), transparent 50%),
+    repeating-linear-gradient(90deg, rgba(23, 19, 15, 0.05) 0 2px, transparent 2px 140px),
+    linear-gradient(180deg, #eef2ea, #e3e9dd 70%);
+}
+
+/* ------------------------- 6ter. FOCUS / ZOOM HERO ------------------------- *
+   Clic sur une paire (cf. js/main.js § "Focus / zoom hero") : agrandissement
+   3D (sneaker3d.js setZoomed) + flou de l'INTÉGRALITÉ DE LA PAGE via un scrim
+   plein écran (position:fixed) dont le masque radial laisse un "trou" net
+   exactement sur la chaussure zoomée (--hole-x/--hole-y/--hole-r, calculés en
+   JS, cf. updateHoleSize() + sneaker3d.js getHeroRadiusPx()). La chaussure
+   (canvas 3D) reste SOUS le scrim (elle n'a pas besoin d'être remontée : le
+   scrim ne PEINT rien dans le trou, donc rien ne la recouvre à cet endroit —
+   seul un trou mal dimensionné donnerait l'impression contraire, d'où le
+   calcul dynamique du rayon). Tout est inerte (pointer-events:none, invisible)
+   tant que `.is-open` n'est pas posé. */
+.hero-focus {
+  position: fixed;
+  inset: 0;
+  z-index: 2000; /* au-dessus de tout le site : header (1000), menu (900), HUD (500) */
+  /* le conteneur lui-même ne doit JAMAIS intercepter de clic/scroll/drag :
+     c'est un div plein écran, toujours présent, au-dessus de toute la page —
+     sans ce `none`, il bloquerait en permanence toute interaction (carousel,
+     scroll, nav), même overlay fermé. Seuls le scrim et le bouton fermer
+     redeviennent interactifs (pointer-events:auto), et seulement quand
+     `.is-open`. */
+  pointer-events: none;
+}
+.hero-focus-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--bg-rgb), 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.55s ease, backdrop-filter 0.55s ease, -webkit-backdrop-filter 0.55s ease;
+  -webkit-mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent 0, transparent var(--hole-r, 0px), black calc(var(--hole-r, 0px) + 90px));
+  mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent 0, transparent var(--hole-r, 0px), black calc(var(--hole-r, 0px) + 90px));
+}
+.hero-focus.is-open .hero-focus-scrim {
+  opacity: 1;
+  pointer-events: auto;
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.hero-focus-close {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  width: 34px; height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(var(--bg-rgb), 0.35);
+  color: var(--ink);
+  font-size: 1.2rem;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease 0.15s, transform 0.25s var(--ease), background-color 0.25s ease;
+}
+.hero-focus-close:hover { background: var(--brand-primary); color: var(--brand-on); transform: scale(1.06); }
+.hero-focus.is-open .hero-focus-close { opacity: 1; pointer-events: auto; }
+
+/* Bloc de texte : aligné à GAUCHE de l'écran (marge fixe, indépendante de la
+   taille du trou pour rester robuste sur toutes les largeurs). Remonté par
+   rapport au centre vertical de la chaussure (--hole-y) via le translateY
+   (décalage fixe en plus du -50%, cf. valeur négative supplémentaire). */
+.hero-focus-info {
+  position: fixed;
+  left: clamp(24px, 6vw, 72px);
+  top: var(--hole-y, 50%);
+  transform: translateY(calc(-50% - 48px));
+  max-width: min(340px, 30vw);
+  text-align: left;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.hero-focus.is-open .hero-focus-info { opacity: 1; }
+.hero-focus-meta {
+  font-family: var(--font-street);
+  font-weight: 400;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-bottom: 0.3rem;
+  text-align: left;
+}
+.hero-focus-name {
+  font-family: var(--font-street);
+  font-weight: 400; /* Anton n'a qu'une graisse ; ne pas forcer 600 */
+  font-size: 1.1rem;
+  letter-spacing: 0; /* pas de tracking négatif avec une condensée */
+  margin-bottom: 0.5rem;
+  text-align: left;
+}
+.hero-focus-story {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--ink-dim);
+  text-align: left;
+}
+
+/* Trait = simple SOULIGNEMENT en flux normal, sous la mini histoire, sur
+   toute la largeur du bloc de texte (plus une ligne pointant vers la
+   chaussure) — reste donc TOUJOURS sous le texte par construction (il vient
+   après dans le flux, jamais superposé). Même tracé progressif GSAP
+   (scaleX), origine à GAUCHE désormais (se dessine dans le sens de lecture). */
+.hero-focus-line {
+  margin-top: 0.9rem;
+  width: 100%;
+  height: 1px;
+  background: var(--ink-dim);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+.hero-focus.is-open .hero-focus-line {
+  transform: scaleX(1);
+}
+
+/* le texte de fond (titre + pied du hero) se floute/s'efface légèrement lui
+   aussi pendant le zoom — il reste sous le scrim (z-index inférieur à 2000). */
+.hero-head, .hero-foot {
+  transition: opacity 0.55s ease, filter 0.55s ease;
+}
+.hero-section.is-zoomed .hero-head,
+.hero-section.is-zoomed .hero-foot {
+  opacity: 0.25;
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+@media (max-width: 860px) {
+  /* pas assez de place pour un bloc de texte sur le côté : panneau centré
+     sous le trou (la marge gauche fixe déborderait sinon). Le soulignement
+     (.hero-focus-line, width:100%) reste affiché tel quel, centré avec le
+     reste du bloc. */
+  .hero-focus-info {
+    left: 50%;
+    top: calc(var(--hole-y, 50%) + var(--hole-r, 0px) + 24px);
+    transform: translateX(-50%);
+    text-align: center;
+    max-width: min(84vw, 340px);
+  }
+  .hero-focus-meta, .hero-focus-name, .hero-focus-story { text-align: center; }
+}
+
+/* ------------------------- 6quater. STORYTELLING ------------------------- *
+   Section additive, entièrement gérée par js/storytelling.js — scène/caméra/
+   renderer Three.js DÉDIÉS, montés dans .storytelling-canvas. Pinnée par
+   GSAP ScrollTrigger (pin:true) le temps de la séquence : c'est CE mécanisme
+   qui réserve l'espace de scroll supplémentaire, .storytelling-section reste
+   donc simplement "plein écran" (100vh), sans position:fixed posée ici. */
+.storytelling-section {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* léger halo de couleur (teinte de marque par défaut), même esprit discret
+   que .profile-section::before — purement décoratif. */
+.storytelling-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, var(--brand-primary), transparent 60%);
+  opacity: 0.1;
+  pointer-events: none;
+}
+.storytelling-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.storytelling-canvas canvas { display: block; width: 100%; height: 100%; }
+
+.storytelling-copy {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* les blocs individuels réactivent pointer-events selon leur visibilité (cf. JS) */
+}
+.story-step {
+  position: absolute;
+  top: 50%;
+  max-width: min(340px, 32vw);
+  /* la visibilité (opacity/transform/filter) est désormais portée par CHAQUE
+     span .split-inner (reveal mot par mot / ligne par ligne avec stagger,
+     cf. js/storytelling.js § revealInners) et non plus par ce conteneur —
+     celui-ci reste donc simplement visible, en position. */
+}
+.story-step--left { left: clamp(1.5rem, 6vw, 5rem); }
+.story-step--right { right: clamp(1.5rem, 6vw, 5rem); text-align: right; }
+/* kicker : même traitement que .section-kicker ailleurs sur le site (police
+   courante, pas la police "street" — trop bold/display pour un simple label
+   au-dessus d'un texte narratif long, cf. demande). Découpé en caractères
+   (splitChars) : reveal rapide, léger, cf. js/storytelling.js. */
+.story-kicker {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+  margin-bottom: 0.6rem;
+  transition: color 0.6s ease;
+}
+/* texte narratif : Inter (--font-body, déjà la police "moderne/sans-serif
+   très lisible" demandée — inutile d'en ajouter une 3e au site) ; line-height
+   encore resserré (1.42 → 1.22) et taille légèrement réduite pour un rendu
+   plus fin/dense, sans devenir illisible. Découpé en LIGNES (splitLines) :
+   chaque ligne a son propre décalage d'entrée (stagger), cf. revealInners. */
+.story-text {
+  font-family: var(--font-body);
+  /* encore réduit (0.92-1.08rem → 0.8-0.92rem) ; le plancher (0.8rem = 12.8px)
+     reste confortablement lisible sur petit écran, cf. demande. */
+  font-size: clamp(0.8rem, 1.15vw, 0.92rem);
+  line-height: 1.22;
+  color: var(--ink-dim);
+}
+
+@media (max-width: 860px) {
+  /* pas assez de place pour un texte sur le côté d'une chaussure géante :
+     bloc centré, ancré en bas de la section (la chaussure occupe le reste
+     de l'espace visible au-dessus) — même logique de repli que
+     .hero-focus-info en mobile. */
+  .story-step {
+    left: 50%;
+    right: auto;
+    top: auto;
+    bottom: 2.2rem;
+    max-width: min(88vw, 380px);
+    text-align: center;
+    transform: translateX(-50%); /* centrage horizontal uniquement ; le reveal du texte reste porté par les spans */
+  }
+  .story-step--right { text-align: center; }
+}
+
 /* ------------------------- 7. PROFIL ------------------------- */
 .profile-section {
   position: relative;
-  min-height: 90vh;
+  min-height: 70vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -525,7 +993,7 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 700;
   font-size: clamp(6rem, 26vw, 24rem);
   letter-spacing: -0.04em;
-  color: rgba(245, 242, 236, 0.05);
+  color: rgba(var(--ink-rgb), 0.05);
   white-space: nowrap;
   pointer-events: none;
   z-index: 0;
@@ -588,7 +1056,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .benefits-panels { min-width: 0; }
 .benefit-panel {
-  min-height: 100vh;
+  min-height: 60vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -626,7 +1094,7 @@ button { font-family: inherit; cursor: pointer; }
 /* ------------------------- 9. STATEMENT ------------------------- */
 .statement-section {
   position: relative;
-  min-height: 100vh;
+  min-height: 85vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -639,6 +1107,11 @@ button { font-family: inherit; cursor: pointer; }
   width: 100%; height: 100%;
   object-fit: cover;
 }
+/* Exception délibérée, NON pilotée par le thème : cette section repose sur
+   une vidéo (contenu média fixe, pas du chrome de page) — un scrim assombri
+   + un texte clair garantit une lisibilité constante quel que soit le thème
+   du reste du site, plutôt que de risquer un texte sombre peu lisible sur
+   une vidéo déjà sombre en mode clair. */
 .statement-overlay {
   position: absolute;
   inset: 0;
@@ -653,6 +1126,7 @@ button { font-family: inherit; cursor: pointer; }
   line-height: 1;
   letter-spacing: -0.03em;
   padding: 0 1.5rem;
+  color: #f5f2ec;
 }
 
 /* ------------------------- 10. COLLECTION (scroll horizontal) ------------------------- */
@@ -668,63 +1142,180 @@ button { font-family: inherit; cursor: pointer; }
   scrollbar-width: thin;
 }
 .collection-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   flex: 0 0 auto;
   width: min(340px, 78vw);
   scroll-snap-align: center;
-  background: var(--bg-soft);
+  /* fond teinté par le coloris de la paire (--card-primary/--card-secondary,
+     posés en inline style par carte, cf. main.js) plutôt qu'un fond neutre
+     identique partout — color-mix garde la teinte discrète (fond toujours
+     lisible), cohérent avec le traitement déjà fait sur le hero/footer. */
+  background:
+    radial-gradient(140% 90% at 12% -12%, color-mix(in srgb, var(--card-primary) 26%, transparent), transparent 60%),
+    linear-gradient(165deg, var(--bg-soft) 0%, color-mix(in srgb, var(--card-secondary) 12%, var(--bg-soft)) 100%);
   border: 1px solid var(--line);
   border-radius: 1.3rem;
   overflow: hidden;
-  transition: transform 0.35s var(--ease), border-color 0.35s ease;
+  transition: transform 0.4s var(--ease), border-color 0.35s ease, box-shadow 0.4s ease;
 }
-.collection-card:hover { transform: translateY(-6px); border-color: rgba(245,242,236,0.28); }
+/* liseré dégradé en tête de carte — même principe que .site-footer::before,
+   dans les couleurs propres à CETTE paire (pas la couleur active globale). */
+.collection-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  z-index: 2;
+  background: linear-gradient(90deg, var(--card-primary), var(--card-secondary));
+}
+.collection-card:hover {
+  transform: translateY(-8px) scale(1.015);
+  border-color: color-mix(in srgb, var(--card-primary) 45%, var(--line));
+  box-shadow: 0 22px 44px -16px color-mix(in srgb, var(--card-primary) 45%, transparent);
+}
 .collection-media {
+  position: relative;
+  flex: 0 0 230px; /* hauteur fixe, ne doit jamais rétrécir (carte = colonne flex) */
   height: 230px;
   display: flex; align-items: center; justify-content: center;
   padding: 1.6rem;
+  overflow: hidden;
+  /* dégradé radial (coloris) + fine trame diagonale (clin d'œil aux ambiances
+     urbaines du hero, ex. ambiance-ruelle) — discret, purement décoratif. */
   background:
+    repeating-linear-gradient(115deg, color-mix(in srgb, var(--card-primary) 16%, transparent) 0 2px, transparent 2px 24px),
     radial-gradient(circle at 50% 60%, var(--card-primary), transparent 70%),
     var(--bg-soft);
 }
 .collection-media .sneaker-visual { width: 100%; height: 100%; }
-/* Visuel 3D interne de la carte (remplace l'image) — même emprise que le 2D. */
-.collection-media .collection-canvas { width: 100%; height: 100%; display: block; }
-.collection-body { padding: 1.3rem 1.4rem 1.5rem; position: relative; }
+/* Visuel 3D interne de la carte (remplace l'image) — même emprise que le 2D ;
+   légère rotation accentuée au survol (cf. js/collection3d.js § renderCard). */
+.collection-media .collection-canvas { width: 100%; height: 100%; display: block; transition: transform 0.4s var(--ease); }
+.collection-card:hover .collection-media .collection-canvas { transform: scale(1.04); }
+.collection-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1.3rem 1.4rem 1.5rem;
+  position: relative;
+}
+/* -----------------------------------------------------------------------
+   Alignement "catalogue e-commerce" : CHAQUE bloc de contenu (badge, nom,
+   coloris, tagline, prix, tailles) a une hauteur fixe/mini IDENTIQUE sur
+   toutes les cartes, définie une seule fois ci-dessous — ils démarrent donc
+   tous à la même position verticale d'une carte à l'autre, quelle que soit
+   la longueur réelle du texte. Les débordements sont tronqués proprement
+   (ellipsis / line-clamp) plutôt que d'agrandir le bloc et de tout décaler.
+   ----------------------------------------------------------------------- */
+/* emplacement du badge TOUJOURS réservé (même si aucun badge sur cette
+   carte, cf. main.js) : sans ça, le nom juste en dessous se décalerait vers
+   le haut sur les cartes sans badge. */
+.collection-badge-slot { min-height: 1.7rem; margin-bottom: 0.6rem; }
+/* badge plein (coloris de la paire), plus affirmé que le simple contour
+   précédent — même esprit que .hero-active-badge du carousel héro. */
 .collection-badge {
   display: inline-block;
   font-size: 0.66rem;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--card-secondary);
-  border: 1px solid currentColor;
-  padding: 0.25rem 0.55rem;
+  color: var(--card-on, var(--brand-on));
+  background: var(--card-primary);
+  padding: 0.3rem 0.65rem;
   border-radius: 999px;
-  margin-bottom: 0.8rem;
 }
-.collection-body h3 {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1.3rem;
-  letter-spacing: -0.01em;
+.collection-name {
+  font-family: var(--font-street);
+  font-weight: 400; /* Anton n'a qu'une graisse ; ne pas forcer 600 */
+  font-size: 1.45rem;
+  letter-spacing: 0; /* pas de tracking négatif avec une condensée */
+  height: 1.9rem;
+  line-height: 1.9rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .collection-colorway {
   font-size: 0.82rem;
   color: var(--ink-dim);
-  margin: 0.3rem 0 1rem;
+  margin: 0.3rem 0 0.7rem;
+  height: 1.3rem;
+  line-height: 1.3rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.collection-meta {
+.collection-tagline {
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+  line-height: 1.45;
+  margin-bottom: 1rem;
+  /* toujours 2 lignes de haut, texte plus long → tronqué avec "…" */
+  height: calc(1.45em * 2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.collection-price-row { min-height: 1.5rem; display: flex; align-items: center; margin-bottom: 1rem; }
+.collection-price { font-family: var(--font-street); font-weight: 400; font-size: 1.15rem; }
+
+/* Sélecteur de taille : pastilles cliquables, ÉTAT VISUEL uniquement (pas de
+   panier réel pour l'instant, cf. main.js § initCollectionGrid). Hauteur fixe
+   (une seule rangée) : si jamais les pastilles débordaient sur deux lignes
+   (bcp de tailles / carte très étroite), le surplus est proprement masqué
+   plutôt que de repousser le bouton en dessous. */
+.collection-sizes {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: flex-start; /* garde les pastilles à 34px même si le conteneur est légèrement plus haut */
+  gap: 0.4rem;
+  height: 38px; /* pastille (34px) + marge pour l'effet de soulèvement de .is-selected */
+  overflow: hidden;
+  margin-bottom: 1.1rem;
 }
-.collection-meta span { font-family: var(--font-display); font-weight: 600; }
-.collection-meta a {
-  font-size: 0.82rem;
+.size-pill {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
   font-weight: 600;
-  color: var(--ink);
-  border-bottom: 1px solid var(--ink);
-  padding-bottom: 2px;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s var(--ease);
+}
+.size-pill:hover { border-color: var(--card-primary); color: var(--ink); }
+.size-pill.is-selected {
+  background: var(--card-primary);
+  border-color: var(--card-primary);
+  color: var(--card-on, var(--brand-on));
+  transform: translateY(-2px);
+}
+
+/* Bouton "Ajouter au panier" : coloris propre à la carte (pas la couleur
+   active globale du site) — pas de logique de panier réelle pour l'instant. */
+.collection-add-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  border-radius: 999px;
+  border: none;
+  background: var(--card-primary);
+  color: var(--card-on, var(--brand-on));
+  font-weight: 600;
+  font-size: 0.86rem;
+  transition: transform 0.25s var(--ease), background-color 0.3s ease;
+}
+.collection-add-btn:hover { transform: translateY(-2px); }
+.collection-add-btn.is-added {
+  background: color-mix(in srgb, var(--card-primary) 65%, #3ecf72 35%);
 }
 
 /* ------------------------- 11. FAQ ------------------------- */
@@ -784,7 +1375,7 @@ button { font-family: inherit; cursor: pointer; }
   border: 1px solid var(--line);
   border-radius: 1.8rem;
   background:
-    radial-gradient(circle at 50% 0%, rgba(245,242,236,0.05), transparent 60%),
+    radial-gradient(circle at 50% 0%, rgba(var(--ink-rgb), 0.05), transparent 60%),
     var(--bg-soft);
 }
 .newsletter-title {
@@ -794,13 +1385,41 @@ button { font-family: inherit; cursor: pointer; }
   line-height: 1;
   letter-spacing: -0.02em;
   text-transform: uppercase;
-  margin-bottom: 1rem;
+  /* CAUSE du désalignement : contrairement à .newsletter-text (max-width:500px)
+     et .newsletter-form (max-width:520px), ce titre n'avait pas de largeur
+     propre — il occupait donc toute la largeur de .newsletter-card (~720px),
+     un conteneur bien plus large que les éléments juste en dessous. Un
+     text-align:center hérité centre le TEXTE dans cette boîte, mais la boîte
+     elle-même n'était pas alignée sur le même axe que le texte/formulaire.
+     max-width + margin:0 auto: même technique que .newsletter-text/.newsletter-
+     form, pour que les trois partagent le même centre et la même largeur de
+     référence, à toutes les tailles d'écran. */
+  max-width: 640px;
+  margin: 0 auto 1rem;
+  /* si le titre passe sur 2 lignes (fréquent avec ce clamp() large + 6vw, qui
+     fait varier le point de retour à la ligne en continu selon le viewport),
+     équilibre les lignes plutôt que de laisser un fragment court et ragged —
+     dégrade proprement (wrap normal) sur les navigateurs qui ne supportent
+     pas encore la propriété. */
+  text-wrap: balance;
+  /* CAUSE des mots coupés : data-reveal="chars" (splitChars) éclate le texte
+     en un <span> par LETTRE (cf. js/split-text.js) sans les regrouper par
+     mot — des lettres adjacentes d'un même mot deviennent alors des boîtes
+     inline-block indépendantes, entre lesquelles le navigateur s'autorise à
+     couper en fin de ligne (comportement connu du split "par caractère").
+     Passé à data-reveal="lines" (cf. index.html) : chaque LIGNE reconstruite
+     reste un texte normal, le mot ne peut donc plus être coupé qu'à un
+     espace. Garde-fou explicite en plus (aucune coupure forcée ailleurs). */
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .newsletter-text {
   color: var(--ink-dim);
   line-height: 1.6;
   max-width: 500px;
   margin: 0 auto 2rem;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .newsletter-form { max-width: 520px; margin: 0 auto; }
 .form-row {
@@ -814,7 +1433,7 @@ button { font-family: inherit; cursor: pointer; }
   padding: 0.9rem 1.2rem;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(255,255,255,0.03);
+  background: rgba(var(--ink-rgb), 0.03);
   color: var(--ink);
   font: inherit;
   outline: none;
@@ -842,42 +1461,150 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 0.82rem;
   color: var(--ink-dim);
   line-height: 1.4;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .form-consent input { margin-top: 0.15rem; accent-color: var(--brand-primary); }
 .form-status { margin-top: 1rem; font-size: 0.88rem; min-height: 1.2em; }
 .form-status.is-error { color: #ff8080; }
 .form-status.is-success { color: #93e0a5; }
 
-/* ------------------------- 13. FOOTER ------------------------- */
+/* ------------------------- 13. FOOTER ------------------------- *
+   Volontairement plus coloré/vivant que le reste du site (--footer-bg, chaud
+   et sombre, distinct de --bg) : structuré en 4 colonnes (marque / nav / aide
+   / newsletter), liens animés (soulignement qui se déploie au survol, même
+   esprit que les autres micro-interactions du site), pastille sociale reprenant
+   le traitement déjà utilisé pour .carousel-arrow / .hero-focus-close. */
 .site-footer {
-  border-top: 1px solid var(--line);
-  padding: 3rem 2rem 2.5rem;
+  position: relative;
+  background:
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(255, 255, 255, 0.06), transparent 60%),
+    linear-gradient(180deg, var(--footer-bg), var(--footer-bg-soft));
+  color: var(--ink);
+  overflow: hidden;
+}
+/* fine bande dégradée en tête, seul élément qui suit le coloris actif du
+   carousel (cf. --brand-*) — clin d'œil à l'identité dynamique du site sans
+   rendre tout le footer imprévisible/pâle si le coloris actif est très clair. */
+.site-footer::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--brand-primary), var(--brand-secondary));
+  transition: background 0.6s ease;
+}
+
+.footer-inner {
   max-width: 1320px;
   margin: 0 auto;
+  padding: clamp(3rem, 6vw, 4.5rem) 2rem 2.5rem;
 }
-.footer-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 2.5rem;
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr 1.1fr;
+  gap: 2.5rem;
+  padding-bottom: 3rem;
 }
-.footer-logo { font-family: var(--font-display); font-weight: 700; font-size: 1.4rem; }
-.footer-social { display: flex; gap: 1.4rem; font-size: 0.9rem; }
-.footer-social a { color: var(--ink-dim); }
-.footer-social a:hover { color: var(--ink); }
+.footer-col-newsletter { max-width: 320px; }
+
+.footer-logo {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.5rem;
+  margin-bottom: 0.9rem;
+}
+.footer-tagline {
+  color: rgba(var(--ink-rgb), 0.68);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  max-width: 280px;
+  margin-bottom: 1.4rem;
+}
+
+.footer-social { display: flex; gap: 0.7rem; }
+.footer-social-link {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--ink-rgb), 0.18);
+  color: var(--ink);
+  transition: background-color 0.25s ease, color 0.25s ease, transform 0.25s var(--ease), border-color 0.25s ease;
+}
+.footer-social-link svg { width: 18px; height: 18px; }
+.footer-social-link:hover {
+  background: var(--brand-primary);
+  color: var(--brand-on);
+  border-color: var(--brand-primary);
+  transform: translateY(-2px);
+}
+
+.footer-heading {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(var(--ink-rgb), 0.5);
+  margin-bottom: 1.2rem;
+}
+.footer-links { list-style: none; display: flex; flex-direction: column; gap: 0.75rem; }
+.footer-links a {
+  position: relative;
+  display: inline-block;
+  font-size: 0.94rem;
+  color: rgba(var(--ink-rgb), 0.75);
+  transition: color 0.25s ease;
+}
+/* soulignement animé (se déploie de gauche à droite) — même principe que le
+   tracé de ligne déjà utilisé ailleurs (ex: hero-focus), en discret ici. */
+.footer-links a::after {
+  content: "";
+  position: absolute;
+  left: 0; bottom: -2px;
+  width: 100%; height: 1px;
+  background: var(--brand-primary);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.35s var(--ease);
+}
+.footer-links a:hover { color: var(--ink); }
+.footer-links a:hover::after { transform: scaleX(1); }
+
+.footer-newsletter-text {
+  color: rgba(var(--ink-rgb), 0.68);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 1.2rem;
+}
+.footer-newsletter-btn { gap: 0.5rem; }
+.footer-newsletter-btn svg { transition: transform 0.25s var(--ease); }
+.footer-newsletter-btn:hover svg { transform: translateX(3px); }
+
 .footer-bottom {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 1rem;
-  padding-top: 1.6rem;
-  border-top: 1px solid var(--line);
+  padding-top: 1.8rem;
+  border-top: 1px solid rgba(var(--ink-rgb), 0.14);
 }
-.footer-legal { display: flex; gap: 1.4rem; flex-wrap: wrap; font-size: 0.85rem; }
-.footer-legal a { color: var(--ink-dim); }
-.footer-legal a:hover { color: var(--ink); }
-.footer-copy { font-size: 0.85rem; color: var(--ink-dim); letter-spacing: 0.05em; }
+.footer-copy { font-size: 0.82rem; color: rgba(var(--ink-rgb), 0.5); letter-spacing: 0.02em; }
+
+.footer-payments { display: flex; gap: 0.6rem; }
+.payment-badge {
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--ink-rgb), 0.18);
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(var(--ink-rgb), 0.55);
+}
 
 /* ------------------------- 14. RESPONSIVE ------------------------- */
 @media (max-width: 860px) {
@@ -896,7 +1623,7 @@ button { font-family: inherit; cursor: pointer; }
     padding: 0.5rem;
     border: 1px solid var(--line);
     border-radius: 999px;
-    background: rgba(11,11,12,0.8);
+    background: rgba(var(--bg-rgb), 0.8);
     backdrop-filter: blur(14px);
     z-index: 600;
   }
@@ -905,10 +1632,31 @@ button { font-family: inherit; cursor: pointer; }
   .hero-section { padding: 6rem 1.2rem 2rem; }
   .carousel-arrow { display: none; }
   .faq-section, .newsletter-section { padding-left: 1.2rem; padding-right: 1.2rem; }
+
+  /* cartes "Toute la collection" enrichies (tagline, prix, tailles, bouton) :
+     un peu plus compactes pour rester lisibles sans casser le scroll horizontal.
+     Chaque bloc garde une hauteur fixe/mini cohérente (cf. section 10) — seules
+     les valeurs elles-mêmes sont réduites ici, pas le principe d'alignement. */
+  .collection-card { width: min(280px, 82vw); }
+  .collection-media { flex-basis: 190px; height: 190px; padding: 1.2rem; }
+  .collection-body { padding: 1.1rem 1.15rem 1.3rem; }
+  .collection-name { font-size: 1.25rem; height: 1.7rem; line-height: 1.7rem; }
+  .collection-sizes { gap: 0.3rem; height: 34px; }
+  .size-pill { min-width: 30px; height: 30px; font-size: 0.72rem; }
+  .collection-add-btn { font-size: 0.82rem; padding: 0.7rem 1rem; }
+
+  .footer-inner { padding-left: 1.2rem; padding-right: 1.2rem; }
+  .footer-grid { grid-template-columns: 1fr; gap: 2.2rem; }
+  .footer-col-newsletter { max-width: none; }
+  .footer-tagline { max-width: none; }
+  .footer-bottom { justify-content: center; text-align: center; }
 }
 
 /* accessibilité : réduit les animations */
 @media (prefers-reduced-motion: reduce) {
   .hero-gradient::before, .sound-bars i, .scroll-hint-line { animation: none; }
+  .ambiance-layer,
+  .hero-focus-scrim, .hero-focus-close, .hero-focus-line, .hero-focus-info,
+  .hero-head, .hero-foot { transition: none; }
   * { scroll-behavior: auto; }
 }

@@ -6,11 +6,32 @@
   <title>Adopte ta shoes — On n'achète pas une paire, on l'adopte</title>
   <meta name="description" content="Adopte ta shoes : la curation de sneakers premium. Trouve ta paire, adopte-la. Authenticité garantie, matières nobles, livraison le lendemain.">
 
+  <!-- Thème clair/sombre : résolu ICI, synchrone, AVANT le premier paint (sinon
+       un visiteur ayant choisi "clair" verrait un flash sombre le temps que le
+       JS différé applique data-theme). Ordre : préférence sauvegardée
+       (localStorage) > préférence système (prefers-color-scheme) > "dark" par
+       défaut (mode actuel du site). La même clé est relue/écrite par le bouton
+       de bascule dans js/main.js (initThemeToggle). -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("adopte-theme");
+        var theme = (saved === "light" || saved === "dark")
+          ? saved
+          : (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    })();
+  </script>
+
   <!--
     ASSETS À REMPLACER (placeholders) :
-    - Sneakers : dessinées en SVG par js/sneaker-renderer.js tant que
-      product.image est null dans js/data.js. Mets tes PNG détourés et
-      renseigne le champ image de chaque produit.
+    - Sneakers (hero + collection) : rendues en 3D (Three.js, cf.
+      js/sneaker3d.js + js/collection3d.js) à partir des .glb de
+      js/hero-data.js / js/collection-data.js ; repli en silhouette SVG
+      générique (js/sneaker-renderer.js) si WebGL est indisponible.
     - Vidéo statement : video/hero-sneaker.mp4 (clip Pexels générique).
     - Sons : /audio/*.mp3 (voir js/audio.js), non fournis.
     - Logo : texte "Adopte." — remplace par ton SVG si besoin.
@@ -18,17 +39,29 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Anton : typo "street"/sneaker culture, réservée au carousel héro (nom de
+       modèle, labels, badge, prix, panneau de zoom) — cf. styles.css --font-street. -->
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=Anton&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="styles.css">
+
+  <!-- Page d'intro (chaussures géantes, une fois par session) : composant
+       TOTALEMENT À PART — un seul fichier CSS et un seul module JS dédiés,
+       qui construisent leur propre DOM en overlay plein écran par-dessus le
+       site (cf. js/site-intro.js). N'importe rien du site, n'est importé par
+       aucun fichier du site : aucune autre modification n'était nécessaire
+       dans le reste du HTML/CSS/JS existant pour l'intégrer. -->
+  <link rel="stylesheet" href="site-intro.css">
 
   <!-- Libs (globals) : GSAP + ScrollTrigger + Lenis -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.14/dist/lenis.min.js"></script>
 
-  <!-- Three.js (modules ES via CDN) — carousel hero 3D uniquement.
-       Sert à js/sneaker3d.js. Le reste du site ne dépend pas de Three. -->
+  <!-- Three.js (modules ES via CDN), utilisé par js/sneaker3d.js (carousel
+       hero), js/collection3d.js (grille collection) et js/site-intro.js
+       (page d'intro, instance 3D indépendante) — le reste du site ne dépend
+       pas de Three. -->
   <script type="importmap">
   {
     "imports": {
@@ -40,6 +73,11 @@
 
   <!-- App (modules ES) -->
   <script type="module" src="js/main.js"></script>
+
+  <!-- Page d'intro : module 100% séparé de main.js (pas importé par lui, ne
+       l'importe pas non plus) — construit et insère lui-même tout son DOM
+       (cf. js/site-intro.js), sans rien attendre du reste du HTML. -->
+  <script type="module" src="js/site-intro.js"></script>
 </head>
 
 <body>
@@ -58,11 +96,33 @@
     <div class="scroll-progress"><div class="scroll-progress-fill"></div></div>
 
     <div class="header-container">
-      <a href="#hero" class="logo">
+      <!-- onclick : SEULE modification autorisée sur ce fichier pour la page
+           d'intro — appelle window.replayIntro() (exposé par js/site-intro.js,
+           chargé indépendamment) ; ne bloque le lien #hero par défaut que si
+           l'intro démarre réellement (repli normal sinon : reduced-motion,
+           WebGL absent, ou intro déjà en cours). -->
+      <a href="#hero" class="logo" onclick="if (window.replayIntro && window.replayIntro()) return false;">
         <span class="logo-text">Adopte<span class="logo-accent">.</span></span>
       </a>
 
       <div class="header-actions">
+        <button id="themeToggle" class="hud-btn theme-toggle" aria-label="Passer en mode clair" aria-pressed="false">
+          <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2"></circle>
+            <line x1="12" y1="2.5" x2="12" y2="5"></line>
+            <line x1="12" y1="19" x2="12" y2="21.5"></line>
+            <line x1="2.5" y1="12" x2="5" y2="12"></line>
+            <line x1="19" y1="12" x2="21.5" y2="12"></line>
+            <line x1="4.9" y1="4.9" x2="6.7" y2="6.7"></line>
+            <line x1="17.3" y1="17.3" x2="19.1" y2="19.1"></line>
+            <line x1="4.9" y1="19.1" x2="6.7" y2="17.3"></line>
+            <line x1="17.3" y1="6.7" x2="19.1" y2="4.9"></line>
+          </svg>
+          <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.6 6.6 0 0 0 10.5 10.5z"></path>
+          </svg>
+        </button>
+
         <button id="soundToggle" class="hud-btn sound-btn is-muted" aria-label="Activer / couper le son">
           <span class="sound-bars"><i></i><i></i><i></i></span>
         </button>
@@ -95,7 +155,6 @@
   </div>
 
   <!-- ===================== HUD décoratif ===================== -->
-  <div class="hud hud-bottom-left"><span class="hud-coords">SCROLL 000 / 100</span></div>
   <div class="hud hud-bottom-right"><span>ADOPTE™ · 2026 · FR</span></div>
 
   <main>
@@ -105,9 +164,9 @@
       <div class="hero-gradient"></div>
 
       <div class="hero-head">
-        <p class="hero-eyebrow">La collection · 8 paires à adopter</p>
+        <p class="hero-eyebrow">La collection · des paires à adopter</p>
         <h1 class="hero-title">
-          <span class="hero-active-name">Atlas</span>
+          <span class="hero-active-name">Jordan</span>
           <span class="hero-active-colorway">Blanc Cassé / Crème</span>
         </h1>
       </div>
@@ -135,8 +194,21 @@
           <span class="hero-active-price">139 €</span>
         </div>
         <div class="carousel-dots" id="carouselDots"></div>
-        <p class="scroll-hint">Scroller pour découvrir <span class="scroll-hint-line"></span></p>
       </div>
+    </section>
+
+    <!-- ===================== STORYTELLING (chaussure géante, scroll-driven) =====================
+         Géré ENTIÈREMENT par js/storytelling.js — scène/caméra/renderer Three.js
+         DÉDIÉS et INDÉPENDANTS de celui du carousel hero (js/sneaker3d.js) et de
+         la grille collection (js/collection3d.js), montés dans .storytelling-canvas.
+         Section ADDITIVE et PERMANENTE (contrairement à l'intro, ne se retire
+         jamais du DOM) : pinnée/scrubée au scroll dans les deux sens. -->
+    <section id="storytelling" class="storytelling-section">
+      <div class="storytelling-canvas"></div>
+      <!-- rempli dynamiquement par js/storytelling.js à partir de
+           js/storytelling-data.js (STORY_STEPS) — modifie ce fichier de
+           données pour ajuster les textes, rien à changer ici. -->
+      <div class="storytelling-copy" id="storytellingCopy"></div>
     </section>
 
     <!-- ===================== PROFIL ===================== -->
@@ -169,31 +241,27 @@
 
       <div class="benefits-panels">
         <article id="benefit-1" class="benefit-panel">
-          <p class="benefit-strike"><s>Contrefaçons dans la nature</s></p>
           <h2 class="benefit-title" data-reveal="chars">Authenticité garantie</h2>
           <p class="benefit-text" data-reveal="lines">Chaque paire passe entre les mains de nos contrôleurs et vient de partenaires officiels. Zéro contrefaçon, promesse d'Adopte : tu reçois exactement ce que tu adoptes.</p>
-          <span class="benefit-index">01 / 04</span>
+
         </article>
 
         <article id="benefit-2" class="benefit-panel">
-          <p class="benefit-strike"><s>Synthétique cheap</s></p>
           <h2 class="benefit-title" data-reveal="chars">Matières nobles</h2>
           <p class="benefit-text" data-reveal="lines">Cuir pleine fleur, mesh technique respirant, semelles pensées pour durer. On choisit des matières qui vieillissent bien, parce qu'une bonne paire, ça s'adopte pour longtemps.</p>
-          <span class="benefit-index">02 / 04</span>
+
         </article>
 
         <article id="benefit-3" class="benefit-panel">
-          <p class="benefit-strike"><s>Livraison en 5 jours</s></p>
           <h2 class="benefit-title" data-reveal="chars">Livraison le lendemain</h2>
           <p class="benefit-text" data-reveal="lines">Commande aujourd'hui, chausse demain. Logistique rapide, suivi en temps réel : ta nouvelle paire est déjà pressée de te rencontrer.</p>
-          <span class="benefit-index">03 / 04</span>
+        
         </article>
 
         <article id="benefit-4" class="benefit-panel">
-          <p class="benefit-strike"><s>Retours compliqués</s></p>
           <h2 class="benefit-title" data-reveal="chars">Retour &amp; échange sous 30 jours</h2>
           <p class="benefit-text" data-reveal="lines">Essaie-la à la maison, sans risque. Si le courant ne passe pas, tu la renvoies ou tu l'échanges sous 30 jours, simplement. Adopter, ça doit rester un plaisir.</p>
-          <span class="benefit-index">04 / 04</span>
+     
         </article>
       </div>
     </section>
@@ -222,7 +290,7 @@
     <!-- ===================== FAQ ===================== -->
     <section id="faq" class="faq-section">
       <div class="faq-head">
-        <p class="section-kicker" data-reveal="fade">Questions fréquentes</p>
+  
         <h2 class="section-title" data-reveal="chars">On te dit tout.</h2>
       </div>
 
@@ -266,7 +334,7 @@
     <section id="newsletter" class="newsletter-section">
       <div class="newsletter-card">
         <p class="section-kicker" data-reveal="fade">Ne rate aucun drop</p>
-        <h2 class="newsletter-title" data-reveal="chars">Rejoins la team Adopte</h2>
+        <h2 class="newsletter-title" data-reveal="lines">Rejoins la team Adopte</h2>
         <p class="newsletter-text" data-reveal="lines">Nouveaux modèles, restocks, éditions limitées : les meilleures paires partent vite. Sois prévenu·e en premier.</p>
 
         <form id="newsletterForm" class="newsletter-form" novalidate>
@@ -289,20 +357,82 @@
 
   <!-- ===================== FOOTER ===================== -->
   <footer class="site-footer">
-    <div class="footer-top">
-      <span class="footer-logo">Adopte<span class="logo-accent">.</span></span>
-      <div class="footer-social">
-        <a href="#">Instagram</a>
-        <a href="#">TikTok</a>
+    <div class="footer-inner">
+      <div class="footer-grid">
+        <!-- Bloc marque -->
+        <div class="footer-col footer-brand">
+          <a href="#hero" class="footer-logo">Adopte<span class="logo-accent">.</span></a>
+          <p class="footer-tagline">La curation de sneakers premium. On n'achète pas une paire, on l'adopte.</p>
+          <div class="footer-social">
+            <a href="#" class="footer-social-link" aria-label="Instagram">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="5"></rect>
+                <circle cx="12" cy="12" r="4"></circle>
+                <circle cx="17.3" cy="6.7" r="0.9" fill="currentColor" stroke="none"></circle>
+              </svg>
+            </a>
+            <a href="#" class="footer-social-link" aria-label="TikTok">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 4v10.8a3.4 3.4 0 1 1-3.4-3.4"></path>
+                <path d="M14 4c.55 2.25 2.2 3.85 4.4 4.25"></path>
+              </svg>
+            </a>
+            <a href="#" class="footer-social-link" aria-label="X (Twitter)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <line x1="4.5" y1="4.5" x2="19.5" y2="19.5"></line>
+                <line x1="19.5" y1="4.5" x2="4.5" y2="19.5"></line>
+              </svg>
+            </a>
+          </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="footer-col">
+          <h3 class="footer-heading">Navigation</h3>
+          <ul class="footer-links">
+            <li><a href="#hero">Accueil</a></li>
+            <li><a href="#collection">Collection</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#newsletter">Newsletter</a></li>
+            <li><a href="#">À propos</a></li>
+            <li><a href="#">Nos engagements</a></li>
+            <li><a href="#">Guide des tailles</a></li>
+            <li><a href="#">Livraison &amp; retours</a></li>
+          </ul>
+        </div>
+
+        <!-- Aide / support -->
+        <div class="footer-col">
+          <h3 class="footer-heading">Aide &amp; support</h3>
+          <ul class="footer-links">
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="mailto:bonjour@adopte-ta-shoes.com">Contact</a></li>
+            <li><a href="#">Suivi de commande</a></li>
+            <li><a href="#">Conditions générales de vente</a></li>
+            <li><a href="#">Politique de confidentialité</a></li>
+            <li><a href="#">Mentions légales</a></li>
+          </ul>
+        </div>
+
+        <!-- Newsletter (rappel — le formulaire vit dans #newsletter, pas de doublon) -->
+        <div class="footer-col footer-col-newsletter">
+          <h3 class="footer-heading">Ne rate aucun drop</h3>
+          <p class="footer-newsletter-text">Nouveaux modèles, restocks, éditions limitées : inscris-toi pour être prévenu·e en premier.</p>
+          <a href="#newsletter" class="btn btn-brand footer-newsletter-btn">
+            <span>S'inscrire</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </a>
+        </div>
       </div>
-    </div>
-    <div class="footer-bottom">
-      <nav class="footer-legal">
-        <a href="#">Mentions légales</a>
-        <a href="#">CGV</a>
-        <a href="#">Politique de confidentialité</a>
-      </nav>
-      <p class="footer-copy">© 2026 ADOPTE TA SHOES</p>
+
+      <div class="footer-bottom">
+        <p class="footer-copy">© <span id="footerYear">2026</span> Adopte ta shoes — Tous droits réservés.</p>
+        <div class="footer-payments" aria-label="Moyens de paiement acceptés">
+          <span class="payment-badge">VISA</span>
+          <span class="payment-badge">MASTERCARD</span>
+          <span class="payment-badge">PAYPAL</span>
+        </div>
+      </div>
     </div>
   </footer>
 </body>

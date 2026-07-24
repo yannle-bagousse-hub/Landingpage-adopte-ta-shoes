@@ -18,7 +18,9 @@
 
 /**
  * Construit le visuel d'une sneaker.
- * @param {object} product - un objet de PRODUCTS (voir data.js)
+ * @param {object} product - un "look" (name/colorway/primary/secondary/text/id),
+ *                  ex. une entrée de COLLECTION_LOOKS (voir js/collection-data.js)
+ *                  ou de HERO_LOOKS (voir js/hero-data.js)
  * @returns {HTMLElement} un noeud à insérer dans le DOM
  */
 export function renderSneaker(product) {

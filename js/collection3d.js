@@ -3,43 +3,39 @@
    -----------------------------------------------------------------------------
    PÉRIMÈTRE STRICT : remplace UNIQUEMENT le visuel interne de chaque carte
    (image → canvas 3D). Ne touche ni au carousel hero, ni au scroll (Lenis), ni
-   au reste. Ce module est indépendant de sneaker3d.js.
+   au reste. Ce module est INDÉPENDANT de sneaker3d.js (aucun état partagé,
+   aucun import croisé) — il reçoit ses données en paramètre (products, cf.
+   js/collection-data.js, propre à cette section) plutôt que de dépendre du
+   catalogue du carousel héro.
 
    PRINCIPE (perf) :
-   - Le .glb Miles Morales est chargé UNE SEULE FOIS (GLTFLoader), puis sa scène
-     est CLONÉE pour chaque carte (géométrie partagée, matériaux clonés).
+   - Les DEUX .glb sources (un par modelKey présent dans les données) sont
+     chargés UNE SEULE FOIS chacun, puis leur scène est CLONÉE pour chaque
+     carte (géométrie partagée, matériaux clonés).
    - UN SEUL contexte WebGL (un renderer partagé, hors-écran) : on rend la scène
      de chaque carte VISIBLE puis on recopie l'image dans le <canvas> de la carte
      (drawImage). Pas de multiplication des contextes WebGL.
    - IntersectionObserver : seules les cartes visibles sont rendues/animées ;
      hors écran → aucun rendu (boucle en pause si plus rien n'est visible).
-   - Rendu léger : légère rotation idle (désactivée si prefers-reduced-motion).
+   - Rendu léger : légère rotation idle (désactivée si prefers-reduced-motion),
+     accentuée au survol de la carte (cf. renderCard).
    ========================================================================== */
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
-const MILES_MODEL = "assets/models/miles_morales_shoes.glb";
 const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* =============================================================================
-   PALETTE DE VARIANTES — ⭐ MODIFIE / AJOUTE TES COLORIS ICI ⭐
-   -----------------------------------------------------------------------------
-   Chaque carte reçoit une variante (par index, en boucle si plus de cartes que
-   de variantes). `color` teinte le matériau du modèle ; `name` sert de libellé
-   (aria-label du canvas). Cohérent avec l'identité "Adopte ta shoes".
-   ========================================================================== */
-export const MILES_VARIANTS = [
-  { name: "Miles Morales — Rouge Signature", color: "#c8321f" },
-  { name: "Miles Morales — Noir Mat", color: "#2c2c30" },
-  { name: "Miles Morales — Blanc Cassé", color: "#ece5d6" },
-  { name: "Miles Morales — Camel", color: "#c7a074" },
-  { name: "Miles Morales — Bleu Nuit", color: "#26365f" },
-  { name: "Miles Morales — Vert Kaki", color: "#5c6438" },
-  { name: "Miles Morales — Terracotta", color: "#a8452f" },
-  { name: "Miles Morales — Gris Argent", color: "#c4c7cc" },
-];
+/* Orientation par modèle source — mêmes valeurs que celles utilisées par le
+   carousel héro pour ces deux mêmes fichiers .glb, mais DUPLIQUÉES ici
+   volontairement (utilitaire géométrique sans état partagé, aucun import
+   croisé avec le code du hero) : ce module reste modifiable indépendamment. */
+const ORIENT_YAW = {
+  jordan: 0,
+  airmax: Math.PI / 2,
+};
+const CARD_ANGLE = -0.5; // angle 3/4 "vitrine", appliqué par-dessus la correction d'axe ci-dessus
 
 function webglAvailable() {
   try {
@@ -52,11 +48,14 @@ function webglAvailable() {
 
 /**
  * Crée le moteur 3D partagé de la collection.
+ * @param {object} opts
+ * @param {Array}  opts.products - cartes à rendre (cf. js/collection-data.js) :
+ *                  { modelKey, model, tint, ... } par entrée.
  * @returns {{ register:Function, start:Function } | null} null si WebGL indispo
  *          (l'appelant retombe alors sur le visuel 2D).
  */
-export function createCollection3D() {
-  if (!webglAvailable()) return null;
+export function createCollection3D({ products } = {}) {
+  if (!webglAvailable() || !products || !products.length) return null;
 
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -75,9 +74,26 @@ export function createCollection3D() {
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-  // chargement du modèle : UNE SEULE FOIS
+  // Éclairage réactif au thème clair/sombre (même principe que sneaker3d.js,
+  // dupliqué ici) : lu une première fois, puis mis à jour EN DIRECT sur
+  // chaque scène de carte via l'évènement "adopte:theme-change" (bouton du
+  // header, cf. main.js).
+  let theme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  window.addEventListener("adopte:theme-change", (e) => {
+    theme = e && e.detail && e.detail.theme === "light" ? "light" : "dark";
+    for (const c of cards) {
+      if (c.ambientLight) c.ambientLight.intensity = theme === "light" ? 0.6 : 0.4;
+    }
+    schedule(); // force un re-rendu immédiat même si la carte est actuellement en pause
+  });
+
+  // --- chargement des modèles sources : une fois par modelKey, partagé ---
   const loader = new GLTFLoader();
-  const gltfPromise = new Promise((res, rej) => loader.load(MILES_MODEL, res, undefined, rej));
+  const gltfCache = new Map(); // url -> Promise<GLTF>
+  function loadGLTF(url) {
+    if (!gltfCache.has(url)) gltfCache.set(url, new Promise((res, rej) => loader.load(url, res, undefined, rej)));
+    return gltfCache.get(url);
+  }
 
   const cards = [];
   let curW = 0, curH = 0;
@@ -96,39 +112,46 @@ export function createCollection3D() {
     { root: null, rootMargin: "140px 0px", threshold: 0.01 }
   );
 
-  function register(canvas, variantIndex) {
-    const variant = MILES_VARIANTS[variantIndex % MILES_VARIANTS.length];
+  function register(canvas, index) {
+    const look = products[index];
     const card = {
       canvas,
       ctx: canvas.getContext("2d"),
       idx: cards.length,
-      variant,
+      look,
       scene: null,
       model: null,
+      ambientLight: null,
       ready: false,
       visible: false,
+      hovered: false,
     };
     canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", variant.name);
+    canvas.setAttribute("aria-label", `${look.name} — ${look.colorway}`);
+    // survol : légère accentuation de la rotation (cf. renderCard) — posé sur
+    // le canvas lui-même (couvre toute la zone média de la carte).
+    canvas.addEventListener("pointerenter", () => { card.hovered = true; });
+    canvas.addEventListener("pointerleave", () => { card.hovered = false; });
     cards.push(card);
     io.observe(canvas);
+
+    loadGLTF(look.model)
+      .then((gltf) => { buildCard(card, gltf); schedule(); })
+      .catch((err) => console.warn(`[collection3d] chargement du modèle échoué (${look.model}) :`, err));
+
     return card;
   }
 
-  gltfPromise
-    .then((gltf) => {
-      for (const card of cards) buildCard(card, gltf);
-      schedule();
-    })
-    .catch((err) => console.warn("[collection3d] chargement du .glb échoué :", err));
-
   function buildCard(card, gltf) {
+    const look = card.look;
     const scene = new THREE.Scene();
     scene.environment = envMap;
     const dir = new THREE.DirectionalLight(0xffffff, 1.5);
     dir.position.set(2.5, 3, 4);
     scene.add(dir);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+    const amb = new THREE.AmbientLight(0xffffff, theme === "light" ? 0.6 : 0.4);
+    scene.add(amb);
+    card.ambientLight = amb;
 
     // CLONE de la scène (géométrie partagée) + matériaux clonés puis TEINTÉS
     const inner = gltf.scene.clone(true);
@@ -138,12 +161,30 @@ export function createCollection3D() {
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       const cloned = mats.map((m) => {
         const c = m.clone();
-        if (c.color) c.color = new THREE.Color(card.variant.color); // variante de coloris
+        if (look.tint && c.color) c.color = new THREE.Color(look.tint); // variante de coloris
         if ("envMapIntensity" in c) c.envMapIntensity = 0.85;
         return c;
       });
       o.material = Array.isArray(o.material) ? cloned : cloned[0];
     });
+
+    // Retrait heuristique du socle/sol éventuel : mesh plat + large par
+    // rapport à l'ensemble (même principe géométrique que le carousel héro,
+    // dupliqué ici, utilitaire sans état partagé).
+    const whole = new THREE.Box3().setFromObject(inner);
+    const ws = new THREE.Vector3();
+    whole.getSize(ws);
+    const wholeFoot = Math.max(ws.x, ws.z) || 1;
+    const socles = [];
+    inner.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      const b = new THREE.Box3().setFromObject(o);
+      const s = new THREE.Vector3();
+      b.getSize(s);
+      const foot = Math.max(s.x, s.z);
+      if (s.y < 0.12 * foot && foot > 0.6 * wholeFoot) socles.push(o);
+    });
+    socles.forEach((m) => m.parent && m.parent.remove(m));
 
     // recentre + met à l'échelle pour tenir dans le cadre
     const box = new THREE.Box3().setFromObject(inner);
@@ -156,7 +197,8 @@ export function createCollection3D() {
     const wrapper = new THREE.Group();
     wrapper.add(inner);
     wrapper.scale.setScalar(2.2 / maxDim);
-    wrapper.rotation.y = -0.5; // angle 3/4 par défaut
+    // angle 3/4 "vitrine" + correction d'axe propre au modèle source (jordan/airmax)
+    wrapper.rotation.y = (ORIENT_YAW[look.modelKey] || 0) + CARD_ANGLE;
     scene.add(wrapper);
 
     card.scene = scene;
@@ -180,8 +222,12 @@ export function createCollection3D() {
 
   function renderCard(card, t) {
     if (card.model && !prefersReduced) {
-      // légère rotation idle, déphasée par carte
-      card.model.rotation.y = -0.5 + Math.sin(t * 0.4 + card.idx * 1.3) * 0.28;
+      // idle discret ; accentué (amplitude + vitesse) tant que la carte est
+      // survolée — "légère rotation subtile de la chaussure" demandée, sans
+      // rien changer à la mécanique de scroll horizontal de la section.
+      const amp = card.hovered ? 0.55 : 0.28;
+      const speed = card.hovered ? 0.9 : 0.4;
+      card.model.rotation.y = (ORIENT_YAW[card.look.modelKey] || 0) + CARD_ANGLE + Math.sin(t * speed + card.idx * 1.3) * amp;
     }
     renderer.render(card.scene, camera);
     card.ctx.clearRect(0, 0, card.canvas.width, card.canvas.height);

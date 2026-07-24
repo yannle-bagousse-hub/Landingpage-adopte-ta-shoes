@@ -10,13 +10,15 @@
    (tout est "guardé" : si une lib manque, le contenu reste visible et lisible.)
    ========================================================================== */
 
-import { PRODUCTS } from "./data.js";
+import { HERO_LOOKS } from "./hero-data.js";
+import { COLLECTION_LOOKS } from "./collection-data.js";
 import { createCarousel } from "./carousel.js";
 import { renderSneaker } from "./sneaker-renderer.js";
 import { initSneaker3D } from "./sneaker3d.js";
 import { createCollection3D } from "./collection3d.js";
 import { splitChars, splitLines } from "./split-text.js";
 import { audio } from "./audio.js";
+import { initStorytelling } from "./storytelling.js";
 
 const gsap = window.gsap;
 const ScrollTrigger = window.ScrollTrigger;
@@ -29,14 +31,25 @@ document.addEventListener("DOMContentLoaded", () => {
   const lenis = initSmoothScroll();
   initNavAndMenu();
   initProgressBar(lenis);
+  initThemeToggle();
   initSoundToggle();
   const carousel = initCarousel();
+  // Storytelling (chaussure géante scroll-driven) : ADDITIF et INDÉPENDANT,
+  // instance Three.js dédiée (cf. js/storytelling.js) — ne reçoit rien du
+  // carousel ci-dessus et ne modifie rien de sa mécanique.
+  initStorytelling();
   initCollectionGrid();
   initBenefitsNav(lenis);
   initReveals();
   initFAQ();
   initNewsletter();
   initHUD(lenis);
+  initFooterYear();
+
+  // Note : la page d'intro (chaussures géantes, une fois par session) N'EST
+  // PLUS pilotée depuis ce fichier — cf. js/site-intro.js, un module 100%
+  // séparé chargé par son propre <script> dans index.html, qui construit son
+  // propre DOM/CSS et ne reçoit rien de main.js (ni n'y est importé).
 
   // expose pour debug console
   window.__adopte = { carousel, lenis };
@@ -171,6 +184,40 @@ function initProgressBar(lenis) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Toggle thème clair/sombre                                                  */
+/* -------------------------------------------------------------------------- *
+   L'attribut data-theme est déjà posé de façon synchrone AVANT ce script (cf.
+   script inline du <head>, résolu depuis localStorage puis prefers-color-
+   scheme) — ce module se contente de lire cet état pour synchroniser l'icône/
+   aria-*, puis de le faire basculer au clic + le persister. Tout le reste du
+   site (styles.css) réagit déjà à data-theme via les variables CSS : aucune
+   autre coordination n'est nécessaire ici, sauf pour la scène 3D du carousel
+   (Three.js ne lit pas le CSS) — cf. l'évènement "adopte:theme-change" plus
+   bas, écouté en ADDITION par js/sneaker3d.js et js/collection3d.js. */
+const THEME_KEY = "adopte-theme";
+function initThemeToggle() {
+  const btn = document.getElementById("themeToggle");
+  const root = document.documentElement;
+  if (!btn) return;
+
+  const sync = () => {
+    const isLight = root.getAttribute("data-theme") === "light";
+    btn.setAttribute("aria-pressed", String(isLight));
+    btn.setAttribute("aria-label", isLight ? "Passer en mode sombre" : "Passer en mode clair");
+  };
+  sync();
+
+  btn.addEventListener("click", () => {
+    const next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
+    sync();
+    audio.play("click");
+    window.dispatchEvent(new CustomEvent("adopte:theme-change", { detail: { theme: next } }));
+  });
+}
+
+/* -------------------------------------------------------------------------- */
 /* Toggle son                                                                 */
 /* -------------------------------------------------------------------------- */
 function initSoundToggle() {
@@ -198,9 +245,10 @@ function initCarousel() {
   // position continue). Cf. plus bas, après createCarousel().
   const scene = document.querySelector(".carousel-scene");
   const viewport = document.querySelector(".carousel-viewport");
+  const heroSection = document.getElementById("hero");
 
-  // pagination : un point par produit
-  const dots = PRODUCTS.map((p, i) => {
+  // pagination : un point par carte
+  const dots = HERO_LOOKS.map((p, i) => {
     const dot = document.createElement("button");
     dot.className = "carousel-dot";
     dot.setAttribute("aria-label", `${p.name} — ${p.colorway}`);
@@ -209,8 +257,24 @@ function initCarousel() {
     return dot;
   });
 
+  // ambiance urbaine : une couche par carte, crossfade en opacité (cf. styles.css)
+  const ambianceLayers = heroSection
+    ? HERO_LOOKS.map((p, i) => {
+        const el = document.createElement("div");
+        el.className = `ambiance-layer ambiance-${p.ambiance}`;
+        el.dataset.index = i;
+        return el;
+      })
+    : [];
+  if (heroSection && ambianceLayers.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "hero-ambiance";
+    ambianceLayers.forEach((el) => wrap.appendChild(el));
+    heroSection.insertBefore(wrap, heroSection.firstChild);
+  }
+
   const applyActive = (index) => {
-    const p = PRODUCTS[index];
+    const p = HERO_LOOKS[index];
     if (!p) return;
 
     // 1) couleurs de marque (transition douce via CSS)
@@ -228,35 +292,49 @@ function initCarousel() {
     // 4) pagination
     dots.forEach((d, i) => d.classList.toggle("is-active", i === index));
 
-    // 5) section Profil (description + gros titre décoratif)
+    // 5) ambiance urbaine derrière la paire active
+    ambianceLayers.forEach((el, i) => el.classList.toggle("is-active", i === index));
+
+    // 6) section Profil (description + gros titre décoratif)
     setProfile(p);
 
-    // 6) son
+    // 7) son
     audio.play("change");
   };
 
+  // NOTE : onClick ne se déclenche (via carousel.js, INCHANGÉ) que pour un clic
+  // sur la paire DÉJÀ active — conservé tel quel (juste le son). L'ouverture du
+  // panneau de zoom, elle, passe désormais par le raycaster ci-dessous, qui
+  // fonctionne pour N'IMPORTE QUELLE paire visible (active ou sur le côté).
   const carousel = createCarousel({
     mount,
-    products: PRODUCTS,
+    products: HERO_LOOKS,
     onChange: applyActive,
     onClick: () => audio.play("click"),
   });
 
-  // --- Manège 3D : TOUTES les paires en vrais modèles 3D distincts ---------
+  // --- Manège 3D : chaque carte = un clone teinté d'un des 2 modèles source -
   // Canvas transparent qui couvre le viewport (pointer-events:none) ; il LIT la
   // position du carousel pour placer les modèles → mécanique carousel inchangée.
-  // Si WebGL indisponible → s3d = null et les visuels 2D restent affichés.
+  // Si WebGL indisponible → s3d reste null et les visuels 2D restent affichés.
+  let s3d = null;
   if (viewport) {
     const layer = document.createElement("div");
     layer.className = "sneaker3d-layer";
     viewport.appendChild(layer);
-    const s3d = initSneaker3D({
+    s3d = initSneaker3D({
       mount: layer,
       pointerEl: scene || viewport,
-      products: PRODUCTS,
+      products: HERO_LOOKS,
       getPosition: () => carousel.getPosition(),
-      // on masque les visuels 2D une fois le manège 3D visible (base chargée)
+      // on masque les visuels 2D une fois le manège 3D visible (modèles chargés)
       onReady: () => scene && scene.classList.add("all-3d"),
+      // clic (≠ drag) sur N'IMPORTE QUELLE paire visible, identifiée par raycaster
+      // (cf. sneaker3d.js § détection clic) — AJOUT, indépendant de carousel.js.
+      onShoeClick: (index) => {
+        audio.play("click");
+        openFocus(index);
+      },
     });
     window.__adopte3d = s3d;
   }
@@ -267,8 +345,132 @@ function initCarousel() {
   prevBtn && prevBtn.addEventListener("click", () => carousel.prev());
   nextBtn && nextBtn.addEventListener("click", () => carousel.next());
 
+  // --- Focus / zoom hero : clic sur N'IMPORTE QUELLE paire visible ---------
+  // Agrandit la paire cliquée (recentrée, taille "héros" quelle que soit sa
+  // position/taille de départ), floute le reste (scrim + backdrop-filter avec
+  // un "trou" masqué sur la zone du carousel-viewport) et affiche nom/date/
+  // mini histoire au bout d'une fine ligne annotée. PÉRIMÈTRE : hero uniquement.
+  const focus = scene ? initHeroFocus({ scene, viewport, carousel, s3d }) : null;
+  function openFocus(index) {
+    focus && focus.open(HERO_LOOKS[index], index);
+  }
+
   applyActive(0);
   return carousel;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Focus / zoom hero — panneau d'info + flou d'arrière-plan au clic           */
+/* -------------------------------------------------------------------------- */
+function initHeroFocus({ scene, viewport, carousel, s3d }) {
+  const heroSection = scene.closest(".hero-section");
+  const root = document.createElement("div");
+  root.className = "hero-focus";
+  root.innerHTML = `
+    <div class="hero-focus-scrim"></div>
+    <button type="button" class="hero-focus-close" aria-label="Fermer les détails">×</button>
+    <div class="hero-focus-info">
+      <p class="hero-focus-meta"></p>
+      <h3 class="hero-focus-name"></h3>
+      <p class="hero-focus-story"></p>
+      <div class="hero-focus-line" aria-hidden="true"></div>
+    </div>`;
+  // le voile doit couvrir TOUTE LA PAGE (position:fixed) : attaché au <body>
+  // plutôt qu'à .carousel-scene, pour ne dépendre d'aucun ancêtre local
+  // (le hero garde un `overflow:hidden` qui ne gêne pas un fixed, mais on
+  // évite ainsi tout risque lié à un futur ancêtre avec transform/filter).
+  document.body.appendChild(root);
+
+  const scrim = root.querySelector(".hero-focus-scrim");
+  const closeBtn = root.querySelector(".hero-focus-close");
+  const lineEl = root.querySelector(".hero-focus-line");
+  const metaEl = root.querySelector(".hero-focus-meta");
+  const nameEl = root.querySelector(".hero-focus-name");
+  const storyEl = root.querySelector(".hero-focus-story");
+
+  let open = false;
+  let holeRadiusPx = 0;
+  let holeCenter = { x: 0, y: 0 };
+  let savedBodyOverflow = "";
+
+  // Centre/rayon du "trou" (zone non floutée) = position RÉELLE du carousel-
+  // viewport à l'écran (fixed → coordonnées déjà relatives au viewport, donc
+  // directement utilisables) + rayon EXACT de la chaussure une fois zoomée
+  // (calculé par sneaker3d.js, cf. getHeroRadiusPx), avec une marge confortable.
+  function updateHoleSize() {
+    const vp = (viewport || scene).getBoundingClientRect();
+    holeCenter = { x: vp.left + vp.width / 2, y: vp.top + vp.height / 2 };
+    const shoeR = s3d && s3d.getHeroRadiusPx ? s3d.getHeroRadiusPx() : 0;
+    const fallback = Math.min(vp.width, vp.height) * 0.34;
+    holeRadiusPx = Math.max(shoeR * 1.18, fallback);
+    root.style.setProperty("--hole-x", `${holeCenter.x}px`);
+    root.style.setProperty("--hole-y", `${holeCenter.y}px`);
+    root.style.setProperty("--hole-r", `${holeRadiusPx}px`);
+  }
+
+  function onScrimClick(e) {
+    const dist = Math.hypot(e.clientX - holeCenter.x, e.clientY - holeCenter.y);
+    if (dist > holeRadiusPx) close(); // clic HORS de la chaussure agrandie
+  }
+  function onKeydown(e) {
+    if (e.key === "Escape") close();
+  }
+
+  function openFn(look, index) {
+    if (!look || open) return;
+    open = true;
+    metaEl.textContent = [look.designer, look.releaseDate].filter(Boolean).join(" · ");
+    nameEl.textContent = `${look.name} — ${look.colorway}`;
+    storyEl.textContent = look.story || "";
+
+    // IMPORTANT : setZoomed AVANT updateHoleSize (qui lit s3d.getHeroRadiusPx(),
+    // lui-même basé sur l'index couramment zoomé — sinon le trou ne verrait
+    // que le repli générique au premier calcul, avant même de démarrer).
+    carousel && carousel.pauseAutoplay();
+    s3d && s3d.setZoomed(true, index);
+    updateHoleSize();
+    root.classList.add("is-open");
+    heroSection && heroSection.classList.add("is-zoomed");
+    // empêche le reste de la page de défiler pendant le zoom plein écran
+    // (sinon le "trou", fixé au viewport, se déciderait du canvas qui lui
+    // continuerait de défiler avec le reste de la page).
+    savedBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("resize", updateHoleSize);
+    document.addEventListener("keydown", onKeydown);
+
+    if (gsap && !prefersReduced) {
+      gsap.fromTo(lineEl, { scaleX: 0 }, { scaleX: 1, duration: 0.55, ease: "power2.out", overwrite: true });
+      gsap.fromTo(
+        [metaEl, nameEl, storyEl],
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power3.out", stagger: 0.08, delay: 0.15, overwrite: true }
+      );
+    }
+  }
+  function close() {
+    if (!open) return;
+    open = false;
+    carousel && carousel.resumeAutoplay();
+    s3d && s3d.setZoomed(false);
+    root.classList.remove("is-open");
+    heroSection && heroSection.classList.remove("is-zoomed");
+    document.body.style.overflow = savedBodyOverflow;
+    window.removeEventListener("resize", updateHoleSize);
+    document.removeEventListener("keydown", onKeydown);
+
+    // referme la ligne/le texte proprement (sinon les styles inline laissés
+    // par GSAP à l'ouverture resteraient figés en position "ouverte").
+    if (gsap && !prefersReduced) {
+      gsap.to(lineEl, { scaleX: 0, duration: 0.35, ease: "power2.in", overwrite: true });
+      gsap.to([metaEl, nameEl, storyEl], { opacity: 0, y: 10, duration: 0.3, ease: "power2.in", overwrite: true });
+    }
+  }
+
+  scrim.addEventListener("click", onScrimClick);
+  closeBtn.addEventListener("click", close);
+
+  return { open: openFn, close };
 }
 
 // (Ré)écrit le titre hero et anime les caractères
@@ -327,23 +529,27 @@ function setText(sel, txt) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Grille "Toute la collection" (scroll horizontal) — réutilise le renderer   */
+/* Grille "Toute la collection" (scroll horizontal) — section ISOLÉE : ses     */
+/* données (js/collection-data.js) et son rendu 3D (js/collection3d.js) sont  */
+/* propres à cette section, sans dépendre du code du carousel héro.          */
 /* -------------------------------------------------------------------------- */
 function initCollectionGrid() {
   const grid = document.getElementById("collectionGrid");
   if (!grid) return;
-  // moteur 3D partagé (un seul contexte WebGL) ; null si WebGL indispo → 2D
-  const c3d = createCollection3D();
-  PRODUCTS.forEach((p, i) => {
+  // moteur 3D partagé (un seul contexte WebGL, 2 modèles sources) ; null si
+  // WebGL indispo → repli 2D (silhouette SVG générique par coloris).
+  const c3d = createCollection3D({ products: COLLECTION_LOOKS });
+  COLLECTION_LOOKS.forEach((p, i) => {
     const card = document.createElement("article");
     card.className = "collection-card";
     card.style.setProperty("--card-primary", p.primary);
     card.style.setProperty("--card-secondary", p.secondary);
+    card.style.setProperty("--card-on", p.text === "light" ? "#f5f2ec" : "#141210");
 
     const media = document.createElement("div");
     media.className = "collection-media";
     if (c3d) {
-      // visuel interne = canvas 3D (même modèle Miles, coloris par carte)
+      // visuel interne = canvas 3D (modèle + coloris propres à la carte)
       const canvas = document.createElement("canvas");
       canvas.className = "collection-canvas";
       media.appendChild(canvas);
@@ -354,11 +560,50 @@ function initCollectionGrid() {
 
     const body = document.createElement("div");
     body.className = "collection-body";
+    const sizesHtml = p.sizes
+      .map((sz) => `<button type="button" class="size-pill" data-size="${sz}" aria-pressed="false">${sz}</button>`)
+      .join("");
+    // Chaque bloc (badge, nom, coloris, tagline, prix, tailles, bouton) a une
+    // hauteur fixe/mini identique sur toutes les cartes (cf. styles.css § 10) :
+    // le badge est toujours rendu, même vide, pour réserver sa place et ne
+    // jamais décaler le nom en dessous selon les cartes.
     body.innerHTML = `
-      ${p.badge ? `<span class="collection-badge">${p.badge}</span>` : ""}
-      <h3>${p.name}</h3>
+      <div class="collection-badge-slot">${p.badge ? `<span class="collection-badge">${p.badge}</span>` : ""}</div>
+      <h3 class="collection-name">${p.name}</h3>
       <p class="collection-colorway">${p.colorway}</p>
-      <div class="collection-meta"><span>${p.price}</span><a href="#newsletter">Adopter</a></div>`;
+      <p class="collection-tagline">${p.tagline}</p>
+      <div class="collection-price-row"><span class="collection-price">${p.price}</span></div>
+      <div class="collection-sizes" role="group" aria-label="Choisir une taille">${sizesHtml}</div>
+      <button type="button" class="collection-add-btn">
+        <span class="add-btn-label">Ajouter au panier</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+      </button>`;
+
+    // sélecteur de taille : simple état visuel (pas de panier réel pour l'instant)
+    const sizeBtns = Array.from(body.querySelectorAll(".size-pill"));
+    sizeBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        sizeBtns.forEach((b) => { b.classList.remove("is-selected"); b.setAttribute("aria-pressed", "false"); });
+        btn.classList.add("is-selected");
+        btn.setAttribute("aria-pressed", "true");
+        audio.play("click");
+      });
+    });
+
+    // "Ajouter au panier" : retour visuel bref, sans logique de panier réelle.
+    const addBtn = body.querySelector(".collection-add-btn");
+    const addLabel = addBtn.querySelector(".add-btn-label");
+    let addTimer = null;
+    addBtn.addEventListener("click", () => {
+      audio.play("click");
+      addBtn.classList.add("is-added");
+      addLabel.textContent = "Ajouté ✓";
+      clearTimeout(addTimer);
+      addTimer = setTimeout(() => {
+        addBtn.classList.remove("is-added");
+        addLabel.textContent = "Ajouter au panier";
+      }, 1600);
+    });
 
     card.appendChild(media);
     card.appendChild(body);
@@ -556,4 +801,12 @@ function initHUD(lenis) {
   if (lenis) lenis.on("scroll", update);
   window.addEventListener("scroll", update);
   update();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Footer : année du copyright générée dynamiquement                          */
+/* -------------------------------------------------------------------------- */
+function initFooterYear() {
+  const el = document.getElementById("footerYear");
+  if (el) el.textContent = String(new Date().getFullYear());
 }

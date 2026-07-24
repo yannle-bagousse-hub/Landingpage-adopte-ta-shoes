@@ -1,0 +1,72 @@
+/* =============================================================================
+   site-intro.css — Page d'intro (chaussures géantes, une fois par session).
+   -----------------------------------------------------------------------------
+   Fichier ENTIÈREMENT À PART : ne référence AUCUNE variable/classe de
+   styles.css (pas de var(--bg)/var(--ink), etc. — valeurs codées en dur ici),
+   pour que cette page ne dépende d'aucun fichier existant du site. Son DOM
+   est construit et inséré par js/site-intro.js (id="site-intro"), qui est le
+   SEUL fichier à référencer ces classes.
+   ========================================================================== */
+
+#site-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 999999; /* au-dessus de tout, y compris le loader du site (9999) */
+  overflow: hidden;
+  background: #0b0b0c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transition: opacity 0.7s ease;
+}
+#site-intro.is-leaving { opacity: 0; }
+
+.site-intro-canvas {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+.site-intro-canvas canvas { display: block; width: 100%; height: 100%; }
+.site-intro-canvas.is-visible { opacity: 1; }
+
+.site-intro-logo {
+  position: relative;
+  z-index: 2;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.4rem, 9vw, 6rem);
+  letter-spacing: -0.02em;
+  color: #f5f2ec;
+  opacity: 0;
+  transform: scale(0.86);
+  pointer-events: none;
+}
+.site-intro-dot { color: #c8321f; }
+
+.site-intro-hint {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(1.5rem, 5vh, 3rem);
+  transform: translateX(-50%);
+  z-index: 2;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(245, 242, 236, 0.55);
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+.site-intro-hint.is-visible { opacity: 1; }
+
+@media (max-width: 640px) {
+  .site-intro-logo { font-size: clamp(2rem, 12vw, 3.4rem); }
+  .site-intro-hint { font-size: 0.68rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #site-intro, #site-intro.is-leaving, .site-intro-canvas, .site-intro-hint { transition: none; }
+}

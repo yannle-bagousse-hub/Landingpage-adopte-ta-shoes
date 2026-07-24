@@ -1,6 +1,6 @@
 /* =============================================================================
-   sneaker3d.js — Manège 3D (Three.js) : TOUTES les paires visibles du carousel
-   sont de vrais modèles 3D distincts, rendus simultanément dans UNE seule scène.
+   sneaker3d.js — Manège 3D (Three.js) : TOUTES les cartes visibles du carousel
+   sont rendues simultanément dans UNE seule scène.
    -----------------------------------------------------------------------------
    PÉRIMÈTRE STRICT : ne s'occupe QUE du rendu 3D des chaussures du hero.
    La mécanique du carousel (swipe / molette / snapping / pagination / autoplay)
@@ -8,11 +8,11 @@
    continue (getPosition) pour placer chaque modèle comme le manège, et
    d'OBSERVER la souris / le drag pour le mouvement premium. Il ne pilote rien.
 
-   MODÈLES (convention, voir data.js) :
-   - chaque paire charge "assets/models/adopte-<id>.glb" (modèle distinct),
-   - sinon fallback propre sur "assets/models/_base.glb" TEINTÉ avec `primary`.
-   Un seul renderer / une seule scène : chaque paire = sa propre géométrie +
-   sa propre texture, mais pas 8 contextes WebGL (ce serait le vrai bug perf).
+   MODÈLES (convention, voir hero-data.js) :
+   - seulement DEUX fichiers .glb sources (`product.model`, un par `modelKey`).
+   - chaque carte = un CLONE de son modèle source, teinté avec `product.tint`
+     (même principe que collection3d.js pour la section "Toute la collection").
+   Un seul renderer / une seule scène / deux chargements réseau au total.
 
    MOUVEMENT (identique au comportement validé, appliqué surtout à la paire
    centrée, atténué pour les voisines) :
@@ -26,29 +26,21 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
-const MODEL_DIR = "assets/models/";
-const BASE_MODEL = MODEL_DIR + "_base.glb";
 const gsap = window.gsap;
 const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* ORIENTATION PAR MODÈLE — chaque .glb source peut être exporté dans un sens
+/* ORIENTATION PAR MODÈLE SOURCE — chaque .glb peut être exporté dans un sens
    différent. But : pointe du pied vers la DROITE, chaussure debout (les modèles
    sont en Y-up, donc c'est un problème de YAW seulement).
-   Clé = id produit ; valeurs en radians (yaw = rotation gauche/droite).
-   ⭐ AJUSTE ICI si une paire pointe dans le mauvais sens : ajoute/retire Math.PI
-      pour retourner la pointe (gauche ↔ droite). (pitch/roll dispo si besoin.) */
+   Clé = modelKey (cf. hero-data.js) ; valeurs en radians (yaw = rotation
+   gauche/droite). ⭐ AJUSTE ICI si une paire pointe dans le mauvais sens :
+   ajoute/retire Math.PI pour retourner la pointe. (pitch/roll dispo si besoin.) */
 const ORIENT = {
-  creme: { yaw: 0 }, // miles (fallback) — axe long déjà X
-  nude: { yaw: 0 }, // miles (fallback)
-  anthracite: { yaw: 0 }, // miles
-  argent: { yaw: 0 }, // nike p-6000 — axe long X
-  camel: { yaw: 0 }, // new balance — axe long X
-  marine: { yaw: 0 }, // nike jordan 1985 — axe long X
-  kaki: { yaw: Math.PI / 2 }, // nike air max 90 — axe long Z → +90° pour l'horizontale
-  terracotta: { yaw: Math.PI / 2 }, // samba — axe long Z → +90° pour l'horizontale
+  jordan: { yaw: 0 }, // miles_morales_shoes.glb — axe long déjà X
+  airmax: { yaw: Math.PI / 2 }, // air_max_90.glb — axe long Z → +90° pour l'horizontale
 };
-function orientOf(id) {
-  const o = ORIENT[id] || {};
+function orientOf(modelKey) {
+  const o = ORIENT[modelKey] || {};
   return { yaw: o.yaw || 0, pitch: o.pitch || 0, roll: o.roll || 0 };
 }
 
@@ -73,6 +65,20 @@ function restFrac(ad) {
   return Math.max(REST_MIN_FRAC, (1 / INACTIVE_RATIO) * Math.pow(REST_FALLOFF, Math.max(0, ad - 1)));
 }
 
+// ZOOM (clic sur une paire, cf. main.js § "Focus / zoom hero") : la paire
+// cliquée occupe ZOOM_COVER de la dimension contraignante du viewport (même
+// principe/formule que ACTIVE_COVER, juste une part bien plus grande) —
+// unité relative au viewport, comme partout ailleurs dans ce fichier.
+// Valeur volontairement < 0.92 (essayé précédemment) : à cette marge réduite,
+// le rognage en bas persistait malgré le recentrage caméra ci-dessous — plus
+// de marge totale ici, en plus du décalage vertical (ZOOM_VOFFSET).
+const ZOOM_COVER = 0.78; // part du viewport occupée par la paire zoomée
+// Décalage vertical SUPPLÉMENTAIRE (fraction de visH) appliqué à la paire
+// zoomée, en plus du recentrage sur l'axe optique de la caméra (camera.y) :
+// laisse délibérément plus de marge en BAS qu'en haut (silhouette de
+// chaussure = base large, permet une marge confortable sous la semelle).
+const ZOOM_VOFFSET = 0.045;
+
 /** Détection WebGL basique. */
 export function webglAvailable() {
   try {
@@ -87,12 +93,14 @@ export function webglAvailable() {
  * @param {object} opts
  * @param {HTMLElement} opts.mount      - conteneur du canvas (couvre le viewport)
  * @param {HTMLElement} opts.pointerEl  - élément dont on observe drag/hover
- * @param {Array}       opts.products   - PRODUCTS
+ * @param {Array}       opts.products   - HERO_LOOKS (js/hero-data.js)
  * @param {Function}    opts.getPosition- () => position continue du carousel
  * @param {Function}   [opts.onReady]   - appelé quand le manège 3D est visible
+ * @param {Function}   [opts.onShoeClick] - (index) => void, clic (≠ drag) sur
+ *                      N'IMPORTE QUELLE paire visible, identifiée par raycaster
  * @returns API | null (null si WebGL indisponible → le 2D reste affiché)
  */
-export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady }) {
+export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady, onShoeClick }) {
   if (!mount || !webglAvailable()) return null;
 
   const N = products.length;
@@ -112,7 +120,20 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
   camera.position.set(0, 0.15, 6.6);
 
-  addLights(scene, isMobile);
+  // Éclairage réactif au thème clair/sombre (cf. point 7 de la demande) : une
+  // pièce claire renvoie davantage de lumière ambiante (rebond) qu'une pièce
+  // sombre — seule l'intensité ambiante varie, les lumières directionnelles/
+  // rim (mise en scène "studio") restent identiques dans les deux thèmes.
+  const initialTheme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  const lights = addLights(scene, isMobile, initialTheme);
+  // AJOUT pur : réagit aux changements de thème EN DIRECT (bouton du header,
+  // cf. main.js) sans recharger la page — ne touche à aucun autre réglage.
+  function onThemeChange(e) {
+    const light = !!(e && e.detail && e.detail.theme === "light");
+    const base = isMobile ? 0.55 : 0.35;
+    lights.ambient.intensity = base * (light ? 1.5 : 1);
+  }
+  window.addEventListener("adopte:theme-change", onThemeChange);
   let pmrem = null;
   if (!isMobile) {
     pmrem = new THREE.PMREMGenerator(renderer);
@@ -152,41 +173,123 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
   let interactive = true;
   const clock = new THREE.Clock();
 
-  /* ---------------------------------------------------------------------- */
-  /* Chargement : base d'abord (manège visible tout de suite), puis chaque   */
-  /* vrai modèle en séquence (on accepte la charge réseau — choix utilisateur)*/
-  /* ---------------------------------------------------------------------- */
-  const log = []; // pour le récap console
-  async function boot() {
-    // 1) base tintée → tous les slots sont 3D immédiatement
-    let base = null;
-    try {
-      base = await loadGLTF(BASE_MODEL);
-    } catch (e) {
-      console.warn("[sneaker3d] _base.glb introuvable :", e);
+  // ---- Zoom (paire cliquée, N'IMPORTE LAQUELLE parmi celles visibles) : ----
+  // 0 → normal, 1 → agrandissement "héros" + recentrage, quelle que soit sa
+  // position/taille de départ dans le manège (cf. tick()).
+  const zoomState = { t: 0 };
+  let zoomedIndex = -1;
+  function setZoomed(active, index) {
+    if (active) {
+      zoomedIndex = index;
+      if (gsap && !prefersReduced) gsap.to(zoomState, { t: 1, duration: 0.55, ease: "power3.out", overwrite: true });
+      else zoomState.t = 1;
+    } else if (gsap && !prefersReduced) {
+      // IMPORTANT : on ne réinitialise zoomedIndex qu'à la fin du tween (onComplete),
+      // sinon tick() perdrait la cible de zoom AVANT la fin de l'animation de
+      // fermeture → la paire "sauterait" instantanément à sa taille normale au
+      // lieu de rétrécir en douceur (régression déjà vue une fois, à éviter).
+      gsap.to(zoomState, { t: 0, duration: 0.55, ease: "power3.out", overwrite: true, onComplete: () => { zoomedIndex = -1; } });
+    } else {
+      zoomState.t = 0;
+      zoomedIndex = -1;
     }
-    if (base) {
-      slots.forEach((s) => setSlotModel(s, base, s.product.primary, BASE_MODEL, /*placeholder*/ true));
-      onReady && onReady(); // 2D masqué SEULEMENT si le manège 3D a de quoi s'afficher
-    }
+  }
 
-    // 2) vrais modèles distincts, en séquence (évite de saturer le réseau)
-    for (const s of slots) {
-      const url = `${MODEL_DIR}adopte-${s.product.id}.glb`;
-      try {
-        const gltf = await loadGLTF(url);
-        setSlotModel(s, gltf, null, url, false); // vrai modèle → couleurs réelles, pas de teinte
-      } catch (_) {
-        // pas de modèle dédié → on garde la base tintée (déjà en place)
-        s.loadedFile = base ? "_base.glb (fallback)" : "AUCUN";
-      }
+  /** Rayon écran (px CSS, relatif à `mount`) qu'occupe la paire ACTUELLEMENT
+   *  zoomée une fois pleinement agrandie (ZOOM_COVER). Sert à main.js pour
+   *  dimensionner le "trou" du voile flouté exactement à la taille réelle de
+   *  la chaussure rendue (peu importe le modèle/son ratio l/h). 0 si aucune
+   *  paire n'est zoomée. */
+  function getHeroRadiusPx() {
+    if (zoomedIndex === -1) return 0;
+    const slot = slots[zoomedIndex];
+    if (!slot || !slot.wrapper) return 0;
+    const visH = 2 * Math.tan(((camera.fov * Math.PI) / 180) / 2) * camera.position.z;
+    const visW = visH * camera.aspect;
+    const nsw = slot.wrapper.userData.nsw || FIT;
+    const nsh = slot.wrapper.userData.nsh || FIT;
+    const heroScale = Math.min((ZOOM_COVER * visW) / nsw, (ZOOM_COVER * visH) / nsh);
+    const wPx = nsw * heroScale * (mount.clientWidth / visW);
+    const hPx = nsh * heroScale * (mount.clientHeight / visH);
+    return Math.max(wPx, hPx) / 2;
+  }
+
+  /* ------------------------------------------------------------------------
+     Détection clic (≠ drag de navigation) + raycaster : identifie QUELLE
+     paire (parmi TOUTES celles visibles, pas seulement l'active) a été
+     cliquée. AJOUT PUR : listeners supplémentaires sur le même élément que
+     ceux déjà utilisés pour le parallax/drag ci-dessus — aucun listener
+     existant n'est retiré ni modifié, la mécanique carousel.js n'est pas
+     touchée. ---------------------------------------------------------------- */
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  function ndcFromClient(clientX, clientY) {
+    const rect = mount.getBoundingClientRect();
+    ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    ndc.y = -(((clientY - rect.top) / rect.height) * 2 - 1);
+    return ndc;
+  }
+  function slotIndexFromObject(obj) {
+    let o = obj;
+    while (o) {
+      if (o.userData && o.userData.slotIndex !== undefined) return o.userData.slotIndex;
+      o = o.parent;
     }
+    return -1;
+  }
+  let clickStart = null;
+  const CLICK_MAX_DIST = 8; // px — au-delà, on considère que c'est un drag de navigation
+  const CLICK_MAX_MS = 500; // ms
+  function onClickPointerDown(e) {
+    clickStart = { x: e.clientX, y: e.clientY, t: performance.now() };
+  }
+  function onClickPointerUp(e) {
+    if (!clickStart || zoomedIndex !== -1) { clickStart = null; return; } // une paire est déjà zoomée : on n'interfère pas
+    const dx = e.clientX - clickStart.x;
+    const dy = e.clientY - clickStart.y;
+    const dt = performance.now() - clickStart.t;
+    const dist = Math.hypot(dx, dy);
+    clickStart = null;
+    if (dist > CLICK_MAX_DIST || dt > CLICK_MAX_MS) return; // mouvement/durée trop grands → drag, pas un clic
+
+    raycaster.setFromCamera(ndcFromClient(e.clientX, e.clientY), camera);
+    const candidates = slots.filter((s) => s.holder.visible && s.wrapper).map((s) => s.wrapper);
+    const hits = raycaster.intersectObjects(candidates, true);
+    if (!hits.length) return;
+    const index = slotIndexFromObject(hits[0].object);
+    if (index >= 0) onShoeClick && onShoeClick(index);
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Chargement : les DEUX modèles sources (un par modelKey présent dans      */
+  /* `products`), en parallèle. Une fois les deux prêts, chaque carte clone  */
+  /* son modèle source et le teinte avec sa propre couleur (product.tint).   */
+  /* ---------------------------------------------------------------------- */
+  async function boot() {
+    const modelKeys = [...new Set(products.map((p) => p.modelKey))];
+    const gltfByKey = new Map();
+    await Promise.all(
+      modelKeys.map(async (key) => {
+        const url = products.find((p) => p.modelKey === key).model;
+        try {
+          gltfByKey.set(key, await loadGLTF(url));
+        } catch (e) {
+          console.warn(`[sneaker3d] modèle introuvable pour "${key}" (${url}) :`, e);
+        }
+      })
+    );
+
+    slots.forEach((s) => {
+      const gltf = gltfByKey.get(s.product.modelKey);
+      if (gltf) setSlotModel(s, gltf);
+    });
+    onReady && onReady(); // 2D masqué une fois les modèles disponibles
     printLog();
   }
 
-  function setSlotModel(slot, gltf, tintHex, file, placeholder) {
-    const wrapper = buildModel(gltf, tintHex, slot.product.id);
-    // retire l'ancien (placeholder base) proprement
+  function setSlotModel(slot, gltf) {
+    const wrapper = buildModel(gltf, slot.product.tint, slot.product.modelKey);
+    wrapper.userData.slotIndex = slot.index; // identifie la carte au raycaster (clic)
     if (slot.wrapper) {
       slot.holder.remove(slot.wrapper);
       disposeObject(slot.wrapper);
@@ -194,15 +297,13 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
     slot.holder.add(wrapper);
     slot.wrapper = wrapper;
     slot.materials = collectMaterials(wrapper);
-    slot.loadedFile = placeholder ? "_base.glb (en attente)" : file.split("/").pop();
-    if (!placeholder) slot.real = true;
   }
 
   function printLog() {
-    console.groupCollapsed("%c[sneaker3d] modèles chargés par slide", "color:#c86; font-weight:bold");
+    console.groupCollapsed("%c[sneaker3d] cartes du carousel hero", "color:#c86; font-weight:bold");
     slots.forEach((s) => {
-      const tag = s.real ? "✓ 3D distinct" : "↩ fallback";
-      console.log(`slide ${s.index} · ${s.product.id} (${s.product.name}) → ${s.loadedFile}  [${tag}]`);
+      const ok = !!s.wrapper;
+      console.log(`slide ${s.index} · ${s.product.name} — ${s.product.colorway} (${s.product.modelKey}) ${ok ? "✓" : "✗ (modèle manquant)"}`);
     });
     console.groupEnd();
   }
@@ -210,7 +311,7 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
   /* ---------------------------------------------------------------------- */
   /* Construit un modèle centré + normalisé (dans un wrapper qu'on tourne)    */
   /* ---------------------------------------------------------------------- */
-  function buildModel(gltf, tintHex, id) {
+  function buildModel(gltf, tintHex, modelKey) {
     const inner = gltf.scene.clone(true);
     inner.traverse((o) => {
       if (!o.isMesh) return;
@@ -229,8 +330,9 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
     // --- Retrait du SOCLE/SOL : on filtre à l'AFFICHAGE (le .glb reste intact).
     // Heuristique géométrique : un mesh PLAT (faible hauteur Y) et LARGE (emprise
     // XZ proche de celle du modèle entier) = un plan de sol/socle → on le retire.
-    // (On se base sur la géométrie, pas sur le nom : ex. le mesh "Plane" du
-    //  modèle Jordan est épais → conservé, ce n'est pas un socle.)
+    // On se base sur la géométrie, pas sur le nom (les deux modèles sources n'ont
+    // aucun mesh nommé explicitement ; un mesh épais n'est jamais retiré, même
+    // large, donc les vraies pièces de la chaussure sont toujours conservées).
     const whole = new THREE.Box3().setFromObject(inner);
     const ws = new THREE.Vector3();
     whole.getSize(ws);
@@ -247,7 +349,7 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
       if (flat && large) socles.push(o);
     });
     socles.forEach((m) => m.parent && m.parent.remove(m)); // filtrage affichage
-    if (socles.length) console.info(`[sneaker3d] socle retiré sur "${id}" (${socles.length} mesh)`);
+    if (socles.length) console.info(`[sneaker3d] socle retiré sur "${modelKey}" (${socles.length} mesh)`);
 
     // recentre à l'origine du wrapper (sur la chaussure SEULE, socle exclu)
     const box = new THREE.Box3().setFromObject(inner);
@@ -257,7 +359,7 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
     box.getCenter(center);
     inner.position.sub(center);
 
-    const { yaw, pitch, roll } = orientOf(id);
+    const { yaw, pitch, roll } = orientOf(modelKey);
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     const fit = FIT / maxDim;
     const wrapper = new THREE.Group();
@@ -295,6 +397,11 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
   pel.addEventListener("pointerdown", onPointerDown, { passive: true });
   window.addEventListener("pointermove", onPointerMove, { passive: true });
   window.addEventListener("pointerup", onPointerUp, { passive: true });
+
+  // ---- clic (≠ drag) sur une paire → raycaster (AJOUT, en plus des listeners ----
+  // ci-dessus ; ne remplace ni ne modifie aucun d'entre eux) ----
+  pel.addEventListener("pointerdown", onClickPointerDown, { passive: true });
+  pel.addEventListener("pointerup", onClickPointerUp, { passive: true });
 
   // ---- helpers d'index (boucle infinie, comme carousel.js) ----
   function wrappedDelta(i, pos) {
@@ -342,9 +449,29 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
       const nsh = w.userData.nsh || FIT;
       const activeScale = Math.min((ACTIVE_COVER * visW) / nsw, (ACTIVE_COVER * visH) / nsh);
       const frac = restFrac(ad);
-      const scale = activeScale * (frac + (1 - frac) * s.focus); // lerp(rest, active, focus)
-      // POSITION : voisines poussées vers les bords du viewport (relatif à visW)
-      holder.position.set(d * visW * EDGE_FRAC, 0, -ad * DEPTH);
+      const baseScale = activeScale * (frac + (1 - frac) * s.focus); // lerp(rest, active, focus) — taille normale, inchangée
+
+      // zoom : N'IMPORTE QUELLE paire (identifiée par raycaster, cf. onClickPointerUp)
+      // peut être zoomée, pas seulement l'active. À taille/position "héros" identique
+      // quel que soit son point de départ (lerp depuis sa taille/position ACTUELLES).
+      const isZoomed = s.index === zoomedIndex;
+      const zoomT = isZoomed ? zoomState.t : 0;
+      const heroScale = Math.min((ZOOM_COVER * visW) / nsw, (ZOOM_COVER * visH) / nsh);
+      const scale = baseScale + (heroScale - baseScale) * zoomT;
+      const baseX = d * visW * EDGE_FRAC;
+      const baseZ = -ad * DEPTH;
+      // POSITION : voisines poussées vers les bords du viewport (relatif à visW) ;
+      // la paire zoomée est ramenée au centre au fil du zoom. Le Y converge vers
+      // camera.position.y (et non 0) : la caméra ne fait AUCUN lookAt, donc son
+      // axe optique réel est à sa propre hauteur (0.15), pas à y=0 — un écart
+      // imperceptible en cadrage normal (ACTIVE_COVER=0.56, large marge), mais
+      // qui rognait le bas de la chaussure une fois la marge réduite à
+      // ZOOM_COVER. On ajoute en plus ZOOM_VOFFSET*visH pour laisser
+      // délibérément plus de marge en bas qu'en haut. Ne s'applique qu'à la
+      // carte zoomée (zoomT=0 partout ailleurs) : le manège normal n'est donc
+      // pas affecté.
+      const heroY = camera.position.y + ZOOM_VOFFSET * visH;
+      holder.position.set(baseX * (1 - zoomT), heroY * zoomT, baseZ * (1 - zoomT));
       holder.scale.setScalar(scale);
 
       // rotation : base manège + orientation + idle/parallax/drag (pondérés par le centre)
@@ -356,8 +483,14 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
         (target.y + dragOffsetY) * distFocus;
       w.rotation.x = (w.userData.pitch || 0) + idleX * (0.35 + 0.65 * distFocus) + target.x * distFocus;
 
-      // fondu des voisines
-      const op = clamp(1 - ad * 0.16, 0, 1);
+      // fondu des voisines ; pendant un zoom, tout ce qui n'est PAS la paire
+      // zoomée s'efface progressivement (évite un chevauchement visuel avec
+      // l'ancienne paire active si une paire différente a été zoomée). Les DEUX
+      // branches utilisent un lerp continu (pas de ternaire figé à 1/0) pour que
+      // l'ouverture ET la fermeture restent fluides, sans saut résiduel.
+      const baseOp = clamp(1 - ad * 0.16, 0, 1);
+      const othersFade = zoomedIndex !== -1 ? zoomState.t : 0;
+      const op = isZoomed ? baseOp + (1 - baseOp) * zoomT : baseOp * (1 - othersFade);
       if (s.materials.length) {
         for (const m of s.materials) {
           if (op < 0.999) { m.transparent = true; m.opacity = op; }
@@ -408,6 +541,8 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
 
   return {
     setInteractive(v) { interactive = v; },
+    setZoomed,
+    getHeroRadiusPx,
     resize,
     destroy() {
       running = false;
@@ -417,6 +552,9 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
       pel.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      pel.removeEventListener("pointerdown", onClickPointerDown);
+      pel.removeEventListener("pointerup", onClickPointerUp);
+      window.removeEventListener("adopte:theme-change", onThemeChange);
       slots.forEach((s) => s.wrapper && disposeObject(s.wrapper));
       if (pmrem) pmrem.dispose();
       renderer.dispose();
@@ -426,19 +564,23 @@ export function initSneaker3D({ mount, pointerEl, products, getPosition, onReady
 }
 
 /* --------------------------- helpers de scène ---------------------------- */
-function addLights(scene, isMobile) {
-  scene.add(new THREE.AmbientLight(0xffffff, isMobile ? 0.55 : 0.35));
+function addLights(scene, isMobile, theme) {
+  const base = isMobile ? 0.55 : 0.35;
+  const ambient = new THREE.AmbientLight(0xffffff, base * (theme === "light" ? 1.5 : 1));
+  scene.add(ambient);
   const key = new THREE.DirectionalLight(0xffffff, isMobile ? 1.8 : 2.2);
   key.position.set(3, 4, 4);
   scene.add(key);
   const fill = new THREE.DirectionalLight(0xdfe6ff, 0.8);
   fill.position.set(-4, 1, 2);
   scene.add(fill);
+  let rim = null;
   if (!isMobile) {
-    const rim = new THREE.SpotLight(0xffffff, 3.0, 20, Math.PI / 6, 0.5);
+    rim = new THREE.SpotLight(0xffffff, 3.0, 20, Math.PI / 6, 0.5);
     rim.position.set(-2, 5, -4);
     scene.add(rim);
   }
+  return { ambient, key, fill, rim };
 }
 
 function collectMaterials(root) {
